@@ -555,6 +555,290 @@ public class VolatileNoAtomic extends Thread{
 }
 ```
 
+### 3. 多线程通信
+
+**线程通信**：线程是操作系统中独立个体，但这些个体如果不经过特殊处理就不能成为一个整体，线程间的通信就成为整体必用方式之一。当线程存在通信指挥，系统间的交互性会更强大，在提高CPU利用率的同时还会使开发人员对线程任务在处理的过程中进行有效的把控与监督。
+
+使用**wait/notify**方法实现线程间的通信，注意这两个方法都是Object类的方法即所有Java对象都提供这两个方法。
+
+- **wait/notify**必须配合synchronized关键字使用；
+- **wait**方法释放锁，**notify**方法不释放锁；
+
+下面例子中可以看出使用**wait/notify + synchronized**的组合的问题是：由于nofity不释放锁，所以当t1notify之后仍然会拿着锁继续执行下去直到运行结束后释放锁，然后t2进程才能获得锁执行代码，因此存在的实时性问题。在实时性消息系统中，若在第100万条数据时就找到满足条件的数据，需要实时通知其他线程去处理，而使用**wait/notify**就会让其他线程等待很久，为此可以使用**java.util.concurrent.CountDownLatch**实现实时通知。
+
+```java
+//wait notfiy 方法，wait释放锁，notfiy不释放锁
+public class ListAdd2 {
+	private volatile static List list = new ArrayList();	
+	
+	public void add(){
+		list.add("ttt");
+	}
+	public int size(){
+		return list.size();
+	}
+	public static void main(String[] args) {
+		final ListAdd2 list2 = new ListAdd2();
+		// 1 实例化出来一个 lock
+		// 当使用wait 和 notify 的时候 ， 一定要配合着synchronized关键字去使用
+		//final Object lock = new Object();
+		final CountDownLatch countDownLatch = new CountDownLatch(1);
+		
+		Thread t1 = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					//synchronized (lock) {
+						for(int i = 0; i <10; i++){
+							list2.add();
+							System.out.println("当前线程：" 
+                                               + Thread.currentThread().getName() 
+                                               + "添加了一个元素..");
+							Thread.sleep(500);  //sleep时不释放锁
+							if(list2.size() == 5){
+								System.out.println("已经发出通知..");
+								countDownLatch.countDown();
+								//lock.notify();
+							}
+						}						
+					//}
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+
+			}
+		}, "t1");
+		Thread t2 = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				//synchronized (lock) {
+					if(list2.size() != 5){
+						try {
+							//System.out.println("t2进入...");
+							//lock.wait(); //同时释放锁
+							countDownLatch.await();
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+					}
+					System.out.println("当前线程：" 
+                                       + Thread.currentThread().getName() 
+                                       + "收到通知线程停止..");
+					throw new RuntimeException();
+				//}
+			}
+		}, "t2");	
+		
+		t2.start();
+		t1.start();
+	}
+}
+```
+
+**wait/notify模拟队列Queue**
+
+BlockingQueue是一个队列，支持阻塞机制，阻塞的放入和得到数据，实现LinkedBlockingQueue下面的两个方法：put、take。
+
+- put(Object)把一个对象添加到BlockingQueue中，如果BlockingQueue没有空间，则调用此方法的线程被阻断，直到BlockingQueue里面有空间再继续放入；
+- take()取走BlockingQueue中的排在首位的对象，若BlockingQueue为空，则阻断调用此方法的线程进入等待状态，直到BlockingQueue中有新数据加入；
+
+```java
+import java.util.LinkedList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class MyQueue {
+	//1 需要一个承装元素的集合 
+	private LinkedList<Object> list = new LinkedList<Object>();
+	//2 需要一个计数器
+	private AtomicInteger count = new AtomicInteger(0);
+	//3 需要制定上限和下限
+	private final int minSize = 0;
+	private final int maxSize ;
+	//4 构造方法
+	public MyQueue(int size){this.maxSize = size;}
+	//5 初始化一个对象 用于加锁
+	private final Object lock = new Object();
+	
+	public void put(Object obj){
+		synchronized (lock) {
+			while(count.get() == this.maxSize){
+				try {
+					lock.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			//1 加入元素
+			list.add(obj);
+			//2 计数器累加
+			count.incrementAndGet();
+			//3 通知另外一个线程（唤醒）
+			lock.notify();
+			System.out.println("新加入的元素为:" + obj);
+		}
+	}
+	
+	public Object take(){
+		Object ret = null;
+		synchronized (lock) {
+			while(count.get() == this.minSize){
+				try {
+					lock.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			//1 做移除元素操作
+			ret = list.removeFirst();
+			//2 计数器递减
+			count.decrementAndGet();
+			//3 唤醒另外一个线程
+			lock.notify();
+		}
+		return ret;
+	}
+	public int getSize(){return this.count.get();}
+	
+	public static void main(String[] args) {
+		final MyQueue mq = new MyQueue(5);
+		mq.put("a"); mq.put("b"); mq.put("c");
+		mq.put("d"); mq.put("e");
+		System.out.println("当前容器的长度:" + mq.getSize());
+		Thread t1 = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				mq.put("f"); mq.put("g");
+			}
+		},"t1");
+		t1.start();
+		Thread t2 = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				Object o1 = mq.take();
+				System.out.println("移除的元素为:" + o1);
+				Object o2 = mq.take();
+				System.out.println("移除的元素为:" + o2);
+			}
+		},"t2");
+		try {
+			TimeUnit.SECONDS.sleep(2);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		t2.start();
+	}
+}
+```
+
+### 4. 线程局部变量ThreadLocal
+
+线程局部变量(ThreadLocal)是一种**多线程间并发访问变量的解决方案**，与synchronized加锁方式不同，线程局部变量完全不提供锁，而使用以空间换时间的手段，为每个线程提供变量的独立副本，以保证线程安全。从性能上说，ThreadLocal不具有绝对的优势，在并发不是很高时，加锁的性能会更好，但作为一套与锁完全无关的线程安全解决方案，在高并发量或者竞争激烈的场景，使用ThreadLocal可以在一定程度上减少锁竞争。
+
+```java
+public class ConnThreadLocal {
+	public static ThreadLocal<String> th = new ThreadLocal<String>();
+	public void setTh(String value){th.set(value);}
+	public void getTh(){
+		System.out.println(Thread.currentThread().getName() + ":" + this.th.get());
+	}
+	
+	public static void main(String[] args) throws InterruptedException {
+		
+		final ConnThreadLocal ct = new ConnThreadLocal();
+		Thread t1 = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				ct.setTh("张三");
+				ct.getTh();
+			}
+		}, "t1");
+		
+		Thread t2 = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					Thread.sleep(1000);
+					ct.getTh();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+		}, "t2");
+		
+		t1.start();
+		t2.start();
+	}
+	
+}
+```
+
+### 5. 单例模式与多线程
+
+单例模式最常见的实现是饥饿模式、懒汉模式，一个直接实例化对象，另一个在调用方法时进行实例化对象。在多线程模式中，考虑到性能和线程安全问题，一般选择下面两种单例模式，在性能提高的同时，又保证了线程安全。
+
+- double check instance
+
+  ```java
+  public class DubbleSingleton {
+  	private static DubbleSingleton ds; //调用时再去加载
+  	public  static DubbleSingleton getDs(){
+  		if(ds == null){
+  			try {
+  				Thread.sleep(3000); //假设初始化对象的时间为3m
+  			} catch (InterruptedException e) {
+  				e.printStackTrace();
+  			}
+  			synchronized (DubbleSingleton.class) {
+  				if(ds == null){
+  					ds = new DubbleSingleton();
+  				}
+  			}
+  		}
+  		return ds;
+  	}
+  }
+  ```
+
+- satic innner class[比较常用]
+
+  ```java
+  public class Singletion {
+  	private static class InnerSingletion {
+  		private static Singletion single = new Singletion();
+  	}
+  	public static Singletion getInstance(){
+  		return InnerSingletion.single;
+  	}
+  }
+  ```
+
+### 6. 同步类容器和并发类容器
+
+同步类容器都是线程安全的，但是在某些场景下可能需要加锁来保护复合操作。复合操作如：迭代、跳转、条件运算。这些复合操作在多线程并发修改容器时，可能会表现出意外的行为，最经典的是ConcurrentModification-Exception原因是当容器迭代的过程中，被并发的修改了内容，这是由于早期迭代器设计的时候没有考虑并发修改问题。**同步类容器：Vector、HashTable**，这些容器的同步功能其实都是JDK的Collections.synchronized\*\*等工厂方法去创建实现的，其底层机制就是传统的synchronized关键字对每个公用方法都进行同步，使得每次只能有一个线程访问容器的状态，这显然不能满足今天互联网时代高并发的需求，在保证线程安全的同时，也必须有足够好的性能。
+
+JDK5.0以后提供了多种并发类容器来代替同步类容器从而改善性能，同步类容器的状态都是串行化的，它们虽然实现了线程安全，但是严重降低了并发性，在多线程环境中时会严重降低应用程序的吞吐量。并发容器类是专门为并发设计的，使用ConcurrentHashMap来代替HashTable而且在ConcurrentHashMap中，添加了一些常见的复合操作的支持；使用CopyOnWriteArrayList代替Vector，此外还提供并发的CopyOnWriteArraySet、并发的Queue、ConcurrentLinkedQueue和LinkedBlockingQueue，前者是高性能的队列，后者是是以阻塞队列。而具体的Queue有很多，例如ArrayBlockingQueue、PriorityBlockingQueue和SynchronousQueue。
+
+**ConcurrentMap接口**有两个重要实现：
+
+- ConcurrentHashMap，内部使用段(Segment)来表示不同的部分，每个段是一个小的HashMap，它们拥有自己的锁，只要多个修改操作发生在不同的段上，它们就可以并发进行。把一个整体分成16个段，即最高支持16个线程的并发修改操作，这也是多线层场景时，减小锁的粒度从而降低锁竞争的一种方案，并且代码中大多共享变量使用volatile关键字生命，目的是第一时间获取修改的内容性能非常好。
+- ConcurrentSkipListMap，支持并发排序功能，弥补ConcurrentHashMap无法排序的功能；
+
+**CopyOnWrite(COW)**：是一种用于程序设计中的优化策略。JDK里的COW容器有两种
+
+- CopyOnWriteArrayList
+- CopyOnWriteArraySet
+
+COW容器非常有用，可以在非常多的并发场景中使用到，什么是CopyOnWrite容器？CopyOnWrite容器即写时复制的容器，通俗的理解时当我们往一个容器添加元素的时候，不直接往当前容器添加，而是先将当前容器进行Copy，复制出一个新的容器，然后新的容器里添加元素，添加完元素后，再将原容器的引用指向新的容器。这样做的好处是我们可以对CopyOnWrite容器进行并发的读，而不需要加锁，因为当前容器不会添加加任何元素。所以CopyOnWrite容器也是一种读写分离的思想，读和写不同的容器。
+
+
+
+
+
+
+
+
+
 
 
 

@@ -127,7 +127,7 @@ zkClient.create("/test/node01_tmp", "value_temp", CreateMode.EPHEMERAL);
 zkClient.close();
 ```
 
-
+###  Apache Curator
 
 
 Apache Curator是一个比较完善的ZooKeeper客户端框架，通过封装的一套高级API 简化了ZooKeeper的操作。通过查看官方文档，可以发现Curator主要解决了三类问题：
@@ -137,11 +137,80 @@ Apache Curator是一个比较完善的ZooKeeper客户端框架，通过封装的
 
 Curator主要从以下几个方面降低了zk使用的复杂性：
 
-- 重试机制:提供可插拔的重试机制, 它将给捕获所有可恢复的异常配置一个重试策略，并且内部也提供了几种标准的重试策略(比如指数补偿)
+- 重试机制:提供可插拔的重试机制, 它将给捕获所有可恢复的异常配置一个重试策略，并且内部也提供了几种标准的重试策略(比如指数补偿)；
 - 连接状态监控: Curator初始化之后会一直对zk连接进行监听，一旦发现连接状态发生变化将会作出相应的处理
-- zk客户端实例管理:Curator会对zk客户端到server集群的连接进行管理，并在需要的时候重建zk实例，保证与zk集群连接的可靠性
-- 各种使用场景支持:Curator实现了zk支持的大部分使用场景（甚至包括zk自身不支持的场景），这些实现都遵循了zk的最佳实践，并考虑了各种极端情况
+- zk客户端实例管理:Curator会对zk客户端到server集群的连接进行管理，并在需要的时候重建zk实例，保证与zk集群连接的可靠性；
+- 各种使用场景支持:Curator实现了zk支持的大部分使用场景（甚至包括zk自身不支持的场景），这些实现都遵循了zk的最佳实践，并考虑了各种极端情况；
 
+### Curator监听器
+
+Curator对节点的监听提供了很好的封装，将重复注册、事件信息等处理的很好，同时监听事件返回信息比较详细包括变动节点的路径，节点值等原生API没有提供的信息。Curator监控过程类似与一个本地缓存视图与远程Zookeeper视图的对比过程，Curator官方提供的接口如下：
+
+- NodeCache，对一个节点进行监听，监听事件包括指定路径的增删改操作；
+
+  ```java
+  final NodeCache nodeCache = new NodeCache(client, PATH, false);
+  nodeCache.getListenable().addListener(new NodeCacheListener() {
+      public void nodeChanged() throws Exception {
+          System.out.println("当前节点："+nodeCache.getCurrentData());
+      }
+  });
+   //如果为true则首次不会缓存节点内容到cache中，默认为false,设置为true首次不会触发监听事件
+  nodeCache.start(true);
+  ```
+
+- PathChildrenCache，对指定路径节点的一级子目录监听，不对该节点的操作监听，对其子目录的增删改操作监听；
+
+  ```java
+  final PathChildrenCache pathChildrenCache = 
+                                     new PathChildrenCache(client, "/nodes/node1", true);
+  pathChildrenCache.getListenable().addListener(
+      new PathChildrenCacheListener() {
+           /**
+            * 1. 注册子节点触发 CHILD_ADDED
+            * 2. 更新子节点值触发 CHILD_UPDATED
+            * 3. 删除子节点触发 CHILD_REMOVED
+            * 4. ZK挂掉触发CONNECTION_SUSPENDED，一段时间后触发CONNECTION_LOST
+            * 5. ZK重启触发CONNECTION_RECONNECTED
+            */
+          public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception {
+              switch (event.getType()) {
+                  case CHILD_ADDED:
+                      logger.info("process CHILD_ADDED event");
+                      break;
+                  case CHILD_UPDATED:
+                      logger.info("process CHILD_UPDATED event");
+                      break;
+                  case CHILD_REMOVED:
+                      logger.info("process CHILD_REMOVED event");
+                      break;
+                  case CONNECTION_SUSPENDED:
+                      logger.info("process CONNECTION_SUSPENDED event");
+                      break;
+                  case CONNECTION_RECONNECTED:
+                      logger.info("process CONNECTION_RECONNECTED event");
+                      break;
+                  case CONNECTION_LOST:
+                      logger.info("process CONNECTION_LOST event");
+                      break;
+                  case INITIALIZED:
+                      logger.info("process INITIALIZED event");
+                      break;
+              }
+          }
+      }
+  );
+  /**
+   * 1. POST_INITIALIZED_EVENT：异步初始化cache，初始化完成后会出发事件INITIALIZED；
+   * 2. NORMAL：异步初始化cache，在监听器启动时会枚举当前路径所有子节点，触发CHILD_ADDED类型的事件；
+   * 3. BUILD_INITIAL_CACHE：同步初始化客户端的cache，即创建cache后，就从服务器端拉入对应的数据；
+  */
+  pathChildrenCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+  ```
+
+  
+
+- TreeCache，综合NodeCache和PathChildrenCahce的特性，是对整个目录进行监听，可以设置监听深度；
 
 
 

@@ -22,7 +22,7 @@ import java.util.List;
 
 public class CuratorUsage {
     private static Logger logger  = LoggerFactory.getLogger(CuratorUsage.class);
-    final static String CONN_STR="localhost:2181,localhost:2182,localhost:2183";
+    final static String CONN_STR="10.233.87.241:9080,10.233.87.54:9080";
     final static int SESSION_TIMEOUT = 2000;
     final static int CONN_TIMEOUT = 5000;
 
@@ -157,20 +157,28 @@ public class CuratorUsage {
 //            }
 //        });
 
-
         /**
          * PathChildrenCache：子节点监听
          *
          */
-        result = client.create().withProtection().withMode(CreateMode.PERSISTENT).forPath("/nodes", "nodes".getBytes());
-        logger.info("create for path / result[{}]", result);
+        try {
+            result = client.create().withMode(CreateMode.PERSISTENT).forPath("/nodes", "nodes".getBytes());
+            logger.info("create for path / result[{}]", result);
+        } catch (KeeperException.NodeExistsException e) {
+            logger.info("znode /nodes exists");
+        }
 
-        Thread.sleep(2000);
-
-        result = client.create().withProtection().withMode(CreateMode.EPHEMERAL).forPath("/nodes/node1", "node1".getBytes());
+        result = client.create().withMode(CreateMode.EPHEMERAL).forPath("/nodes/node1", "node1".getBytes());
         logger.info("create for path / result[{}]", result);
 
         final PathChildrenCache pathChildrenCache = new PathChildrenCache(client, "/nodes/node1", true);
+        /**
+         * 1. POST_INITIALIZED_EVENT：异步初始化cache，初始化完成后会出发事件INITIALIZED；
+         * 2. NORMAL：异步初始化cache，在监听器启动的时候会枚举当前路径所有子节点，触发CHILD_ADDED类型的事件；
+         * 3. BUILD_INITIAL_CACHE：同步初始化客户端的cache，即创建cache后，就从服务器端拉入对应的数据；
+         */
+        pathChildrenCache.start(PathChildrenCache.StartMode.POST_INITIALIZED_EVENT);
+
         pathChildrenCache.getListenable().addListener(
                 new PathChildrenCacheListener() {
 
@@ -210,14 +218,48 @@ public class CuratorUsage {
         );
 
         /**
-         * 1. POST_INITIALIZED_EVENT：异步初始化cache，初始化完成后会出发事件INITIALIZED；
-         * 2. NORMAL：异步初始化cache，在监听器启动的时候会枚举当前路径所有子节点，触发CHILD_ADDED类型的事件；
-         * 3. BUILD_INITIAL_CACHE：同步初始化客户端的cache，即创建cache后，就从服务器端拉入对应的数据；
+         *
+         * maxDepth值设置说明，比如当前监听节点/t1，目录最深为/t1/t2/t3/t4,则maxDepth=3,说明下面3级子目录全
+         * 监听，即监听到t4，如果为2，则监听到t3,对t3的子节点操作不再触发
          */
-        pathChildrenCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+        final TreeCache  treeCache =  TreeCache.newBuilder(client, "/tasks")
+                                               .setCacheData(true)
+                                               .setMaxDepth(2)
+                                               .build();
+        treeCache.start();
+        treeCache.getListenable().addListener(
+                new TreeCacheListener() {
+                    public void childEvent(CuratorFramework client, TreeCacheEvent event) throws Exception {
+                        switch (event.getType())  {
+                            case NODE_ADDED:
+                                logger.info("process NODE_ADDED event[{}]", event.getData());
+                                break;
+                            case NODE_UPDATED:
+                                logger.info("process NODE_UPDATED event");
+                                break;
+                            case NODE_REMOVED:
+                                logger.info("process NODE_REMOVED event");
+                                break;
+                            case CONNECTION_SUSPENDED:
+                                logger.info("process CONNECTION_SUSPENDED event");
+                                break;
+                            case CONNECTION_RECONNECTED:
+                                logger.info("process CONNECTION_RECONNECTED event");
+                                break;
+                            case CONNECTION_LOST:
+                                logger.info("process CONNECTION_LOST event");
+                                break;
+                            case INITIALIZED:
+                                logger.info("process INITIALIZED event");
+                                break;
+                        }
+                    }
+                }
+        );
+
+        client.create().withMode(CreateMode.EPHEMERAL).forPath("/tasks/task1", "task1".getBytes());
 
 
-        client.close();
     }
 
 }

@@ -76,9 +76,12 @@ setAcl /names/gao digest:gao:XweDal3j0JQKrQzM0Dp06=:cdra
 
 2. 重启zkServer.sh，然后使用addauth登录超级管理员账户，接下来就可以使用auth、digest设置权限；
 
-
-
-
+   ```shell
+   # 登录超级用户
+   addauth gao:gao
+   # 使用auth，digest设置权限
+   setAcl / ip:127.0.0.1:r
+   ```
 
 #### 1.1 **ZAB协议—ZK的原子消息广播协议**
 

@@ -64,6 +64,25 @@ setAcl /names/gao auth:gao:gao:cdrwa
 setAcl /names/gao digest:gao:XweDal3j0JQKrQzM0Dp06=:cdra
 ```
 
+```java
+// world:anyone:cdrwa
+client.create("/acl", "acl".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
+
+List<ACL> acls  =  new ArrayList<ACL>();
+acls.add(new ACL(ZooDefs.Perms.CREATE | ZooDefs.Perms.DELETE | ZooDefs.Perms.READ,
+                    new Id("auth", "gao:gao")));
+client.create("/acl/acl_a", "acl_1".getBytes(), acls, CreateMode.PERSISTENT);
+
+//注册过的用户必须通过addAuthInfo才能操作节点
+client.addAuthInfo("digest", "gao:gao".getBytes());
+byte[] data  = client.getData("/acl/acl_a",null,null);
+logger.info("获取/acl/acl_a数据: [{}]", new String(data));
+
+ //scheme=ip认证
+acls.add(new ACL(ZooDefs.Perms.CREATE, new Id("ip", "127.0.0.1")));
+client.create("/acl/acl_b", "acl_b".getBytes(), acls, CreateMode.PERSISTENT);
+```
+
 **super的使用方法**
 
 1. 修改zkServer.sh增加super管理员；
@@ -78,7 +97,7 @@ setAcl /names/gao digest:gao:XweDal3j0JQKrQzM0Dp06=:cdra
 
    ```shell
    # 登录超级用户
-   addauth gao:gao
+   addauth digest gao:gao
    # 使用auth，digest设置权限
    setAcl / ip:127.0.0.1:r
    ```
@@ -213,11 +232,28 @@ Curator主要从以下几个方面降低了zk使用的复杂性：
 - zk客户端实例管理:Curator会对zk客户端到server集群的连接进行管理，并在需要的时候重建zk实例，保证与zk集群连接的可靠性；
 - 各种使用场景支持:Curator实现了zk支持的大部分使用场景（甚至包括zk自身不支持的场景），这些实现都遵循了zk的最佳实践，并考虑了各种极端情况；
 
-####  3.1 Curator监听器
+> 原生ZK API连接超时不支持自动重连，监听器注册一次后会生效，不支持递归创建节点。
+
+####  3.1 Curator监听器(永久生效)
+
+ZK API自带的监听器使用 一次后就会失效，在Curator中提供了支持这种监听器的接口，除了原生ZK监听器外，还支持Curator自己实现的监听器CuratorWatcher，使用方法如下：
+
+```java
+ client.getData().usingWatcher(new Watcher() {
+            public void process(WatchedEvent event) {
+                logger.info("ZK Native Watcher");
+            }
+        }).forPath("/master");
+client.getData().usingWatcher(new CuratorWatcher() {
+            public void process(WatchedEvent event) throws Exception {
+                logger.info("Curator Watcher");
+            }
+        }).forPath("/master");
+```
 
 Curator对节点的监听提供了很好的封装，将重复注册、事件信息等处理的很好，同时监听事件返回信息比较详细包括变动节点的路径，节点值等原生API没有提供的信息。Curator监控过程类似与一个本地缓存视图与远程Zookeeper视图的对比过程，Curator官方提供的接口如下：
 
-- NodeCache，对一个节点进行监听，监听事件包括指定路径的增删改操作；
+- NodeCache，监听数据节点的变更，缺点是无法监控增加、删除事件。
 
   ```java
   final NodeCache nodeCache = new NodeCache(client, PATH, false);
@@ -226,7 +262,7 @@ Curator对节点的监听提供了很好的封装，将重复注册、事件信�
           System.out.println("当前节点："+nodeCache.getCurrentData());
       }
   });
-   //如果为true则首次不会缓存节点内容到cache中，默认为false,设置为true首次不会触发监听事件
+   //如果为true会立即缓存节点内容到cache中，默认为false
   nodeCache.start(true);
   ```
 
@@ -234,7 +270,7 @@ Curator对节点的监听提供了很好的封装，将重复注册、事件信�
 
   ```java
   final PathChildrenCache pathChildrenCache = 
-                                     new PathChildrenCache(client, "/nodes/node1", true);
+                                     new PathChildrenCache(client, "/nodes", true);
   pathChildrenCache.getListenable().addListener(
       new PathChildrenCacheListener() {
            /**
@@ -271,15 +307,154 @@ Curator对节点的监听提供了很好的封装，将重复注册、事件信�
           }
       }
   );
-  /**
+  /** StartMode
    * 1. POST_INITIALIZED_EVENT：异步初始化cache，初始化完成后会出发事件INITIALIZED；
-   * 2. NORMAL：异步初始化cache，在监听器启动时会枚举当前路径所有子节点，触发CHILD_ADDED类型的事件；
-   * 3. BUILD_INITIAL_CACHE：同步初始化客户端的cache，即创建cache后，就从服务器端拉入对应的数据；
+   * 2. NORMAL：异步初始化cache；
+   * 3. BUILD_INITIAL_CACHE：同步初始化客户端的cache，会立即从服务器端拉取子节点视图到内存；
   */
   pathChildrenCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
   ```
 
 - TreeCache，综合NodeCache和PathChildrenCahce的特性，是对整个目录进行监听，可以设置监听深度；
+
+  ```java
+  /**
+   * maxDepth值设置说明，比如当前监听节点/t1，目录最深为/t1/t2/t3/t4,则maxDepth=3,说明下面3级子目录全
+   * 监听，即监听到t4，如果为2，则监听到t3,对t3的子节点操作不再触发
+   */
+  final TreeCache  treeCache =  TreeCache.newBuilder(client, "/tasks")
+      .setCacheData(true)
+      .setMaxDepth(2)
+      .build();
+  treeCache.start();
+  treeCache.getListenable().addListener(
+      new TreeCacheListener() {
+          public void childEvent(CuratorFramework client, TreeCacheEvent event) throws Exception {
+              switch (event.getType())  {
+                  case NODE_ADDED:
+                      logger.info("process NODE_ADDED event[{}]", event.getData());
+                      break;
+                  case NODE_UPDATED:
+                      logger.info("process NODE_UPDATED event");
+                      break;
+                  case NODE_REMOVED:
+                      logger.info("process NODE_REMOVED event");
+                      break;
+                  case CONNECTION_SUSPENDED:
+                      logger.info("process CONNECTION_SUSPENDED event");
+                      break;
+                  case CONNECTION_RECONNECTED:
+                      logger.info("process CONNECTION_RECONNECTED event");
+                      break;
+                  case CONNECTION_LOST:
+                      logger.info("process CONNECTION_LOST event");
+                      break;
+                  case INITIALIZED:
+                      logger.info("process INITIALIZED event");
+                      break;
+              }
+          }
+      }
+  );
+  ```
+
+#### 3.2 Watcher实现统一配置
+
+```java
+/**
+*  {"type":"add", "url":"http://dev.ulog.abc", "remark":"add config"}
+*  {"type":"update", "url":"http://10.235.143.112/ulogportal/", "remark":"update config"}
+*  {"type":"delete", "url":"", "remark":"delete config"}
+*/
+public class UnifyConfig {
+    private static final Logger logger = LoggerFactory.getLogger(UnifyConfig.class);
+    final static String CONFIG_PATH = "/redis";
+    final static String SUB_CONFIG_PATH = "/config";
+    final static String CONN_STR="10.233.87.241:9080,10.233.87.54:9080";
+    final static int SESSION_TIMEOUT = 2000;
+    final static int CONN_TIMEOUT = 5000;
+    //用于挂起主进程
+    public static CountDownLatch latch =  new CountDownLatch(1);
+    private static CuratorFramework client = null;
+
+    public static void main(String[] args) {
+        try {
+            RetryPolicy retryPolicy = new ExponentialBackoffRetry(0, 10);
+             //启动Client
+             client = CuratorFrameworkFactory.builder()
+                    .retryPolicy(retryPolicy)
+                    .connectString(CONN_STR)
+                    .sessionTimeoutMs(SESSION_TIMEOUT)
+                    .connectionTimeoutMs(CONN_TIMEOUT)
+                    .build();
+             client.start();
+             logger.info("客户端连接成功，[{}]", client);
+            //采用PathChildrenCache对配置进行监控
+            final PathChildrenCache configNode = new PathChildrenCache(client, CONFIG_PATH,true);
+            configNode.start();
+
+            configNode.getListenable().addListener(
+              new PathChildrenCacheListener() {
+                  public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception {
+                      if (event.getType()== PathChildrenCacheEvent.Type.CHILD_UPDATED)  {
+                          // 确保发生数据更新的路径为/redis/config
+                          String pathChanged  = event.getData().getPath();
+                          if (pathChanged.equals(CONFIG_PATH+SUB_CONFIG_PATH)) {
+                              logger.info("[{}]配置发生改变，需要同步更新", pathChanged);
+
+                              //读取节点数据
+                              String jsonConfig = new String(event.getData().getData());
+                              logger.info("节点[{}]的配置为：{}", pathChanged, jsonConfig);
+
+                              //json配置转换为POJO
+                              RedisConfig redisConfig =  new Gson().fromJson(jsonConfig, RedisConfig.class);
+
+                              if (redisConfig !=  null) {
+                                  String type =  redisConfig.getType();
+                                  String url = redisConfig.getUrl();
+                                  String remark = redisConfig.getRemark();
+
+                                  if (type.equals("add")) {
+                                      logger.info("监听到新增配置，准备下载...");
+                                      Thread.sleep(1000);
+                                      logger.info("开始下载配置，下载路径为:[{}]", url);
+
+                                      Thread.sleep(2000);
+                                      logger.info("下载成功，已将其添加到项目中！");
+                                  } else if (type.equals("update")) {
+                                      logger.info("监听到更新配置，准备下载...");
+                                      Thread.sleep(1000);
+                                      logger.info("开始下载配置，下载路径为:[{}]", url);
+
+                                      Thread.sleep(2000);
+                                      logger.info("下载成功，准备替换配置...");
+                                      logger.info("备份项目已有配置");
+                                      logger.info("替换项目配置");
+                                      Thread.sleep(2000);
+                                      logger.info("配置成功！");
+                                  } else if (type.equals("delete")) {
+                                      logger.info("监听到需要删除配置");
+                                      Thread.sleep(1000);
+                                      logger.info("配置 删除成功");
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+            );
+            latch.await();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (client != null) {
+                client.close();
+                logger.info("关闭会话");
+            }
+        }
+    }
+}
+```
 
 
 

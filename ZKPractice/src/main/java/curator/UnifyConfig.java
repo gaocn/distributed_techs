@@ -1,10 +1,15 @@
 package curator;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import curator.model.RedisConfig;
+import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
 import org.apache.curator.framework.recipes.cache.PathChildrenCacheListener;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.curator.retry.RetryNTimes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,23 +30,26 @@ public class UnifyConfig {
     private static CuratorFramework client = null;
 
     public static void main(String[] args) {
-        //启动Client
-
         try {
+
+            RetryPolicy retryPolicy = new ExponentialBackoffRetry(0, 10);
+
+             //启动Client
              client = CuratorFrameworkFactory.builder()
-                    .retryPolicy(new RetryNTimes(10,  1000))
+                    .retryPolicy(retryPolicy)
                     .connectString(CONN_STR)
                     .sessionTimeoutMs(SESSION_TIMEOUT)
                     .connectionTimeoutMs(CONN_TIMEOUT)
                     .build();
-            logger.info("客户端连接成功，[{}]", client);
+             client.start();
+             logger.info("客户端连接成功，[{}]", client);
 
             /**
              * 采用PathChildrenCache对配置进行监控
              */
 
             final PathChildrenCache configNode = new PathChildrenCache(client, CONFIG_PATH,true);
-            configNode.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+            configNode.start();
 
             configNode.getListenable().addListener(
               new PathChildrenCacheListener() {
@@ -57,13 +65,44 @@ public class UnifyConfig {
                               logger.info("节点[{}]的配置为：{}", pathChanged, jsonConfig);
 
                               //json配置转换为POJO
+                              RedisConfig redisConfig =  new Gson().fromJson(jsonConfig, RedisConfig.class);
 
+                              if (redisConfig !=  null) {
+                                  String type =  redisConfig.getType();
+                                  String url = redisConfig.getUrl();
+                                  String remark = redisConfig.getRemark();
+
+                                  if (type.equals("add")) {
+                                      logger.info("监听到新增配置，准备下载...");
+                                      Thread.sleep(1000);
+                                      logger.info("开始下载配置，下载路径为:[{}]", url);
+
+                                      Thread.sleep(2000);
+                                      logger.info("下载成功，已将其添加到项目中！");
+                                  } else if (type.equals("update")) {
+                                      logger.info("监听到更新配置，准备下载...");
+                                      Thread.sleep(1000);
+                                      logger.info("开始下载配置，下载路径为:[{}]", url);
+
+                                      Thread.sleep(2000);
+                                      logger.info("下载成功，准备替换配置...");
+                                      logger.info("备份项目已有配置");
+                                      logger.info("替换项目配置");
+                                      Thread.sleep(2000);
+                                      logger.info("配置成功！");
+                                  } else if (type.equals("delete")) {
+                                      logger.info("监听到需要删除配置");
+                                      Thread.sleep(1000);
+                                      logger.info("配置 删除成功");
+                                  }
+                              }
                           }
                       }
                   }
               }
             );
 
+            latch.await();
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -72,7 +111,5 @@ public class UnifyConfig {
                 logger.info("关闭会话");
             }
         }
-
     }
-
 }

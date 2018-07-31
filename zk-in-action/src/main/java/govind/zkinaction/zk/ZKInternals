@@ -1,0 +1,80 @@
+【Zookeeper Data Model】
+	类似FS结构，不同是路径上可以设置数据，监听器
+
+【Zookeeper追踪时间的方式】
+	1、Zxid，事务ID，ID的大小表示时间执行的先后顺序，例如：zxid1 < zxid2，则说明zxid1先于zxid2执行。
+	2、VersionNumber，对znode的每一次改变version number都会增加，Verison种类：verison、cverison、aversion，
+	   分别表示znode data的版本号、znode孩子节点数目发生更改后的版本号、znode ACL数目更改后的版本号。
+	3、Ticks，定义事件时间的基本单位，tick time通过最小session timeout时间(2*ticktime)对外使用，例如若用户
+	   session timeout定义时间小于minSessionTimeout，则会将该时间改为minSessionTimeout并通知用户。
+	4、RealTime，Zookeeper中除了需要在znode数据结构中添加timestamp需要时间外，其他均不使用RealTime。
+
+class Znode {
+	czxid           //哪一个zxid创建了该znode
+	mzxid           //最近一次修改该znode的zxid
+	ctime           //创建该znode时，leader epoch的时间
+	mtime           //最近修改znode时，leader epoch的时间
+	version         //znode data的版本号
+	cversion        //znode孩子节点数目发生更改后的版本号
+	aversion        //znode ACL数目更改后的版本号
+	ephemeraOwner   //ephemeral znode的客户的SessionID，若不是ephemeral znode，该值为0
+	dataLength      //znode中数据长度
+	numChildren     //znode的孩子节点数目
+}
+
+绑定监听器的session在过期后的状态变换
+	1、‘connected’，session建立，客户和集群通信；
+	2、由于network partition，客户无法与集群通信；
+	3、‘disconnected’，客户切换到失联状态；
+	4、随着时间流逝，集群中管理的session过期，由于客户失联无法通知；
+	5、过一段时间，客户连接到集群；
+	6、‘expired’，最终客户重连集群后被通知其session过期，转1重新建立连接。
+
+【Zookeeper Watches】
+	Zookeeper中的所有读操作（getData、getChildren、exists），都会有一个Watch作为参数。
+	watch定义：a watch event is "one-time trigger", "sent to the client" that set the watch, which occurs when "the data for which the watch was set changes"!
+	setData会触发data watch，create和delete会触发data watch和child watch；
+	客户失联后，重新连接时，watches需要重新注册才能够使用；同一个watch注册在同一个znode个不同操作如exists，getData，只会返回一次通知。
+	Guarantee about watches：客户收到的监听事件的顺序与服务端看到的事件顺序是一致的。
+
+【Zookeeper ACLs】
+	ZK中的ACLs是IDs及这些IDs对znode的权限的集合，并且ACLs仅仅对当前znode有效，不影响孩子节点；
+	ID的格式：scheme:id，scheme是ID策略，id表示对应值；例如：ip:127.0.0.1，scheme是ip，127.0.0.1是id；
+	ACL Scheme：WORLD，id是anyone，表示：world:anyone
+				AUTH，没有id，表示任何认证用户
+				DIGEST，id是username:password产生的MD5哈希值
+				IP，主机IP地址作为id，支持addr/bits可变长表示指定网络中的所有主机
+	ACLS权限：CREATE(可创建children节点)
+			  READ(可以查看当前节点数据和孩子节点)
+			  WRITE(可以改变当前节点数据)
+			  DELETE(可以删除孩子节点)
+			  ADMIN(可以对当前节点设置权限)
+	【Pluggable Zookeeper Authentication】
+		认证框架的工作步骤：
+			1、认证连接的客户，通常在session建立过程中就完成了；
+			2、在ACLs中找到该用户对应的权限条目<idspec, permissions>
+		接口：
+			"public interface AuthenticationProvider"
+
+【Zookeeper 一致性保证】
+	1、Sequential Consistency，来自客户的更新请求将会按照其发送顺序执行；
+	2、Atomicity，更新要么失败要么成功；
+	3、Single System Image，客户不论连接哪个服务器，所看到的服务视图是一样的；
+	4、Reliablity，更新成功后会返回客户"successful return code"，并且成功更新状态后是在服务器状态恢复时不会回滚的；
+	5、Timeliness，客户看到的视图会在10s左右进行更新
+"不保证"：Simultaneously Consistent Cross-Clinet Views，因为网络延迟等原因一个客户的视图改变不能及时在其他客户视图中更新。
+
+【Java Binding】
+	Zookeeper session 对象建立后会同时创建两个线程：IO线程、Event线程;
+		1、IO线程使用Java NIO，用于所有IO操作，包括session连接、心跳维持，同步方法响应；
+		2、Event线程处理所有事件回调函数，包括异步方法响应，watch event；
+	注意：
+		1、异步回调函数和Watch事件的回调函数是按顺序一次执行完成一个后才能执行下一个。
+		2、回调函数不会阻塞IO线程，也不会影响同步函数的执行；
+		3、当初异步函数与同步函数混合使用时，同步函数的返回顺序可能会不正确；
+
+
+【New Features】
+Added in 3.2.0: An optional "chroot" suffix may also be appended to the connection string. "127.0.0.1:3001,127.0.0.1:3002/app/a"
+Added in 3.2.0: SessionMovedExceptionm，同一个客户发送消息后无响应断开连接，然后重连服务器，连接后原先的请求到达导致无法找到对应
+                的session报错，是服务器端错误(另一种情况是两个客户同时重连服务器)。

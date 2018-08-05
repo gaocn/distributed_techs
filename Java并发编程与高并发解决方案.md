@@ -1136,9 +1136,60 @@ public class HttpInterceptor extends HandlerInterceptorAdapter {
 }
 ```
 
+## 6. 线程不安全类
 
+线程不安全类是指在多线程环境中，若类的对象可以同时被多个线程访问而没有做同步或并发处理，那么对象很容易表现出线程不安全的现象，比如抛出异常、逻辑处理错误等。线程不安全的类如下：
 
+- 字符串拼接，StringBuilder $\rightarrow$ StringBuffer(线程安全)
 
+- 日期处理，SimpleDateFormat $\rightarrow$ JodaTime(线程安全)
+
+  ```java
+  //解决方法1：堆栈封闭实现线程安全 代替全局静态变量
+  private static void update() {
+      try {
+          SimpleDateFormat simpleDateFormat = 
+                              new SimpleDateFormat("yyyyMMdd");
+          simpleDateFormat.parse("20180208");
+      } catch (Exception e) {
+          log.error("parse exception", e);
+      }
+  }
+  //解决方法2：
+  static DateTimeFormatter dateTimeFormatter 
+                        = DateTimeFormat.forPattern("yyyyMMdd");
+  private static void update(int i) {
+      log.info("{}, {}", i, DateTime.parse("20180208", 
+                                           dateTimeFormatter).toDate());
+  }
+  ```
+
+  - ArrayList、HashSet、HashMap等collections中类
+  - 先检查在执行：if(condition) {handle(a);}
+
+## 7. 同步容器与并发容器
+
+同步类容器都是线程安全的，但是在某些场景下可能需要加锁来保护复合操作。复合操作如：迭代、跳转、条件运算。这些复合操作在多线程并发修改容器时，可能会表现出意外的行为，最经典的是ConcurrentModification-Exception原因是当容器迭代的过程中，被并发的修改了内容，这是由于早期迭代器设计的时候没有考虑并发修改问题。**同步类容器：Vector、HashTable**，这些容器的同步功能其实都是JDK的**Collections.synchronizedXX**等工厂方法去创建实现的，其底层机制就是传统的synchronized关键字对每个公用方法都进行同步，使得每次只能有一个线程访问容器的状态，这显然不能满足今天互联网时代高并发的需求，在保证线程安全的同时，也必须有足够好的性能。
+
+```java
+Map<Integer, Integer> map = Collections.synchronizedMap(new HashMap<>());
+Set<Integer> set = Collections.synchronizedSet(Sets.newHashSet());
+List<Integer> list = Collections.synchronizedList(Lists.newArrayList());
+```
+
+JDK5.0以后提供了多种并发类容器来代替同步类容器从而改善性能，同步类容器的状态都是串行化的，它们虽然实现了线程安全，但是严重降低了并发性，在多线程环境中时会严重降低应用程序的吞吐量。并发容器类是专门为并发设计的，使用ConcurrentHashMap来代替HashTable而且在ConcurrentHashMap中，添加了一些常见的复合操作的支持；使用CopyOnWriteArrayList代替Vector，此外还提供并发的CopyOnWriteArraySet、并发的Queue、ConcurrentLinkedQueue和LinkedBlockingQueue，前者是高性能的队列，后者是是以阻塞队列。而具体的Queue有很多，例如ArrayBlockingQueue、PriorityBlockingQueue和SynchronousQueue。
+
+**ConcurrentMap接口**有两个重要实现：
+
+- HashMap、TreeMap $\rightarrow$ ConcurrentHashMap，内部使用段(Segment)来表示不同的部分，每个段是一个小的HashMap，它们拥有自己的锁，只要多个修改操作发生在不同的段上，它们就可以并发进行。把一个整体分成16个段，即最高支持16个线程的并发修改操作，这也是多线层场景时，减小锁的粒度从而降低锁竞争的一种方案，并且代码中大多共享变量使用volatile关键字生命，目的是第一时间获取修改的内容性能非常好。
+- HashMap、TreeMap $\rightarrow$ ConcurrentSkipListMap，支持并发排序功能，弥补ConcurrentHashMap无法排序的功能；
+
+**CopyOnWrite(COW)**：是一种用于程序设计中的优化策略。JDK里的COW容器有两种
+
+- ArrayList $\rightarrow$ CopyOnWriteArrayList
+- HashSet、TreeSet $\rightarrow$ CopyOnWriteArraySet
+
+COW容器非常有用，可以在非常多的并发场景中使用到，什么是CopyOnWrite容器？CopyOnWrite容器即写时复制的容器，通俗的理解时当我们往一个容器添加元素的时候，不直接往当前容器添加，而是先将当前容器进行Copy，复制出一个新的容器，然后新的容器里添加元素，添加完元素后，再将原容器的引用指向新的容器。这样做的好处是我们可以对CopyOnWrite容器进行并发的读，而不需要加锁，因为当前容器不会添加加任何元素。所以CopyOnWrite容器也是一种读写分离的思想，读和写不同的容器。
 
 
 

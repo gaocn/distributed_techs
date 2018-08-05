@@ -1051,7 +1051,90 @@ public class Singleton4 {
 }
 ```
 
+## 4. 不可变对象
 
+不可变对象需要满足的条件：
+
+- 对象创建后其状态就不能修改
+- 对象所有域都是final类型
+- 对象是正确创建的(在对象创建期间，this引用没有逸出)
+
+通常创建不可变对象(可以参考String)采用的方式有将类声明为final，所有成员声明为私有的不允许直接访问成员，对变量不提供setter方法，将所有可变对象声明为final这样只能对它们赋值一次，通过构造器初始化所有成员进行深度拷贝，在getter方法中不直接返回对象本身而是克隆对象并返回对象的拷贝。
+
+**final关键字**可以**修饰类**(不能被继承，同时final类中的所有成员方法隐式指定为final方法)、**修饰方法**(锁定方法不被继承类修改，早期final方法会被转为内嵌方法提高效率但若final方法过于庞大效果就不会太明显--现在已没有这个作用了，一个类的private方法会隐式转为final方法)和**修饰变量**(基本类型初始化后不能修改，引用类型变量初始化后不能再指向另外一个对象)。
+
+**定义不可变对象的类和方法**
+
+1. collections.unmodifiableXXX：Collection、List、Set、Map
+2. Guava中ImmutableXXX：Collection、List、Set、Map，带初始化数据的方法，初始化后就无法修改
+
+```java
+private static Map<Integer, Integer> maps = Maps.newHashMap();
+private final static ImmutableList list = ImmutableList.of(1,2,3);
+private final static ImmutableSet set = ImmutableSet.copyOf(list);
+private final static ImmutableMap<Integer, Integer> map =
+    ImmutableMap.of(1,2,3,4);
+private final static ImmutableMap<Integer, Integer> map1 = 
+    ImmutableMap.<Integer, Integer>builder().put(2,3).put(3,4).build();
+static {
+    maps.put(2,3);
+    maps.put(1,4);
+    maps.put(6,5);
+    maps = Collections.unmodifiableMap(maps);
+}
+```
+
+## 5. 线程封闭
+
+通过在某些情况下，将不会修改的类对象设计成不可变对象来让对象在多个线程间保证对象时线程安全的，归根到底是我们躲避并发问题。避免并发除了使用不可变对象，还有另一种方法**线程封闭**：把对象封装到一个线程中，只有这一个线程能够看到这个对象，那么这个对象就算不是线程安全的也不会出现任何线程安全方面的问题，因为该对象只能在一个线程中访问。实现线程封闭的方法有：
+
+- **Ad-hoc线程封闭**，程序控制实现，最糟糕，可忽略；
+- **堆栈封闭**，即局部变量，多线程执行方法时，方法中的局部变量都会被拷贝一份到线程工作栈中，因此局部变量不会被多个线程所共享的，因此无并发问题；**全局变量容易引发并发问题**
+- ThreadLocal线程封闭，比较好的封闭方法，ThreadLocal内部维护了一个Map，键为每个线程的名称，值为要封闭的对象，每一个线程中的对象都对应于一个Map中的值。
+
+线程局部变量(ThreadLocal)是一种**多线程间并发访问变量的解决方案**，与synchronized加锁方式不同，线程局部变量完全不提供锁，而使用以空间换时间的手段，为每个线程提供变量的独立副本，以保证线程安全。从性能上说，ThreadLocal不具有绝对的优势，在并发不是很高时，加锁的性能会更好，但作为一套与锁完全无关的线程安全解决方案，在高并发量或者竞争激烈的场景，使用ThreadLocal可以在一定程度上减少锁竞争。
+
+使用场景：请求进来之后通过Filter拦截请求将线程信息保存在ThreadLocal变量中，当需要使用时从ThreadLocal变量中取出使用，若不使用了通过Interceptor将使用后的信息移除掉避免内存泄漏。
+
+```java
+public class RequestHolder {
+    private final static ThreadLocal<Long> requestHolder = new ThreadLocal<>();
+    public static void add(Long id) {
+        requestHolder.set(id);
+    }
+    public static Long getId() {
+        return requestHolder.get();
+    }
+    //若不移除，数据不会释放，会造成内存泄漏，requestHolder静态变量生命周期与项目一样，只有项目重启后存储的信息才会被释放
+    public static void remove() {
+        requestHolder.remove();
+    }
+}
+
+public void doFilter(
+    ServletRequest servletRequest, 
+    ServletResponse servletResponse, 
+    FilterChain filterChain)  {
+    HttpServletRequest request = (HttpServletRequest) servletRequest;
+    log.info("do filter,{},{}", Thread.currentThread().getId(), request.getServletPath());
+    RequestHolder.add(Thread.currentThread().getId());
+    filterChain.doFilter(servletRequest, servletResponse);
+}
+
+public class HttpInterceptor extends HandlerInterceptorAdapter {
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.info("preHandle");
+        return true;
+    }
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        RequestHolder.remove();
+        log.info("afterCompletion");
+        return;
+    }
+}
+```
 
 
 

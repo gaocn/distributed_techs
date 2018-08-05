@@ -733,14 +733,48 @@ public class SyncException {
 - 重排序结合线程交叉执行
 - 共享变量更新后的值没有在工作内存和主存间及时更新
 
-JMM关于synchronized的两条规定：
+JMM关于synchronized的两条规定保证变量的可见性：
 
 1. 线程解锁前，必须把共享变量的最新值刷新到主存；
 2. 线程加锁时，将清空工作内存中共享变量的值，从而使用共享变量时需要从主内存中重新读取最新的值(加锁和解锁为同一把锁)；
 
+volatile的可见性通过加入**内存屏障**和**禁止重排序**优化来实现，规则如下：
 
+1. 对volatile变量写操作时，会在写操作后加入一条store屏障指令，将本地内存中的共享变量值刷新到主内存中；
 
+   ```mermaid
+   graph LR
+     A[普通读]
+     B[普通写]
+     C[StoreStore屏障]
+     D[volatile写]
+     E[StoreLoad屏障]
+     A --> B
+     B --> C
+     C --> D
+     D --> E
+   ```
 
+   - StoreStore：禁止上面的普通写与下面的volatile写重排序。
+   - StoreLoad：防止上面的volatile写与下面可能有的volatile读写重排序。
+
+2. 对volatile变量读操作时，会在读操作前加入一条load屏障指令，从主内存中读取共享变量；
+
+   ```mermaid
+   graph LR
+     A[volatile读]
+     B[LoadLoad屏障]
+     C[LoadStore屏障]
+     D[普通读]
+     E[普通写]
+     A --> B
+     B --> C
+     C --> D
+     D --> E
+   ```
+
+   - LoadLoad：禁止下面所有普通读操作和上面的volatile读从排序。
+   - LoadStore：禁止下面所有的写操作和上面的volatile读重排序。
 
 #### 2.1 volatile的含义及使用
 
@@ -750,6 +784,8 @@ Volatile关键字的主要作用是**使变量在多线程间可见**。在Java�
 - 主内存可以执行的操作有read、write、lock、unlock，其中每个操作都是原子的；
 
 volatile的作用就是强制线程到主内存(共享内存)里去读取变量，而不去线程工作区里读取，从而实现了多个线程间的变量可见，也是满足线程安全的可见性。
+
+**使用volatile必须具备两个条件：1. 对变量的写操作不依赖当前值；2. 该变量没有包含在具有其他变量的不变式中**。可以看出被写入 volatile 变量的这些有效值**独立于任何程序的状态**，包括变量的当前状态，通常volatile常用于状态标记量，例如线程初始化是否完成、double-check。
 
 ```java
 public class RunThread extends Thread{

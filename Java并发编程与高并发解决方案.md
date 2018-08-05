@@ -889,11 +889,177 @@ j = i; // 操作 B
 
 > 如果操作顺序不能够从happens-before原则中推导出来，那么就不能保证操作的有序性，虚拟机可以随意的对操作进行重排序。
 
+## 3. 安全发布对象
+
+**发布对象**：使一个对象能够被当前范围之外的代码所使用。与之对应的概念是**对象逸出**：一种错误的发布，当一个对象还没有构造完成时，就使它被其他线程所见。在日常开发中，经常要发布对象，比如通过类的非私有方法返回对象引用、通过共有静态变量发布对象。如果不正确的发布对象会导致两种错误：
+
+1. 发布线程以外的任何线程都可以看到发布对象的过期的值；
+2. 线程看到的被发布对象的引用是最新的，然而被发布对象的状态确实过期的；
+
+因此一个对象要是可变对象，就必须要正其能够安全发布。
+
+下面通过非私有方法发布对象是不安全的，因为我们无法假设其他线程会不会修改这个对象，从而会造成类中状态错误。当采用这种方法获取对象私有对象的引用，就可以在其他线程中直接修改数组中的值，这样当该线程要使用数组中的值时会出现问题，这种发布对象的方法不安全。
+
+```java
+@NotThreadSafe
+@Slf4j
+public class PublishObject {
+    @Getter
+    private String[] states = {"a", "b","c"};
+    public static void main(String[] args) {
+        PublishObject publishObject = new PublishObject();
+        log.info("{}", publishObject.getStates());
+
+        publishObject.getStates()[0] = "d";
+        log.info("{}", publishObject.getStates());
+    }
+}
+```
+
+下面是对象逸出的例子，在对象未创建完成时，就访问了对象中的私有变量，
+
+```java
+@NotThreadSafe
+@Slf4j
+public class ObjectEscape {
+    private int thisCanEscape = 0;
+    public ObjectEscape() {
+        // 若这里启动一个线程，会造成this对象逸出，建议线程先不要start而是采用专门的方法来统一启动线程，例如；工厂方法、私有构造函数完成对象创建和监听器的注册
+        new InnerClass(); 
+    }
+    private class InnerClass {
+        public InnerClass() {
+            log.info("{}", ObjectEscape.this.thisCanEscape);
+        }
+    }
+    public static void main(String[] args) {
+        new Escape();
+    }
+}
+```
+
+**安全发布对象的方法**
+
+1. 在静态初始化函数中初始化一个对象引用；
+2. 将对象的引用保存到volatile类型或AtomicReference对象中；
+3. 将对象的引用保存到某个正确构造对象的final类型域中；
+4. 将对象的引用保存到一个由锁保护的域中；
+
+**懒汉模式**
+
+ ```java
+@NotThreadSafe
+@NotRecommend
+public class Singleton1 {
+    private Singleton1(){} //私有构造函数
+    private static Singleton1 intance = null; //单例对象
+    //静态工厂方法，添加synchronized方法后保证同步，但不推荐
+    //通过不同确保只有线程顺序访问会带来性能问题。
+    public static Singleton1 getInstance() {
+        //懒汉模式：线程不安全
+        if (intance == null) {
+            intance = new Singleton1();
+        }
+        return intance;
+    }
+}
+ ```
+
+**饿汉模式**
+
+```java
+@ThreadSafe
+public class Singleton2 {
+    private Singleton2(){} //私有构造函数
+    //单例对象，饿汉模式：线程安全，当类的初始化没有太多操作要做是可以，
+    //当初始化需要过多操作处理，会导致类加载时过慢，可能会引起性能问题；
+    //同时静态方法都会加载，若未被使用会造成资源浪费。
+    private static Singleton2 intance = new Singleton2();
+    /**
+     饿汉模式的另一种写法
+     要写在前面，静态域初始化与声明顺序有关，放在后面导致instance值为空
+    private static Singleton2 intance = null;
+    static {
+        intance = new Singleton2();
+    }*/
+    //静态工厂方法
+    public static Singleton2 getInstance() {
+        return intance;
+    }
+}
+```
+
+**双重检测模式**
+
+```java
+@NotThreadSafe
+public class Singleton3 {
+    //私有构造函数
+    private Singleton3(){}
+    //单例对象 禁止指令重排
+    private volatile static Singleton3 intance = null;
+    /**
+     * 为什么说是非线程安全的呢？
+     * new Singleton3()操作要执行三步：
+     * 1. 分配对象的内存空间memory allocation
+     * 2. 初始化对象ctorInstance
+     * 3. 设置instance指向刚刚分配的内存
+     * 操作完成后instance就指向被分配的内存，在单线程总这个是没有问题的。
+     * 因为JVM和CPU优化导致指令重排，导致再多线程中可能会出现下面的情况：
+     * 因为2和3没有前后关联，因此可能顺序为132，当线程A、B处于下面位置时，
+     * 当线程A执行到操作2后，线程B判断instance不为空直接返回instance对象，
+     * 此时由于instance尚未进行初始化，因此线程B拿到对象引用进行其他操作
+     * 就可能出现错误。
+     *
+     * 限制不让其指令重排：使用关键字volatile，double-check线程安全
+     */
+    public static Singleton3 getInstance() {
+        if (intance == null) {                                   //线程B
+            synchronized (Singleton3.class) {
+                //double-check：双重同步锁
+                if (intance == null)intance = new Singleton3();  //线程A
+            }
+        }
+        return intance;
+    }
+}
+```
+
+**枚举模式**
+
+```java
+@ThreadSafe
+@Recommend
+public class Singleton4 {
+    private Singleton4(){}
+    public static Singleton4 getInstance() {
+        return Singleton.INSTANCE.getInstance();
+    }
+    //枚举类实现单例模式，相比于懒汉模式安全性更易于保证，
+    // 较饿汉模式在实际使用时才初始化不会造成资源模式
+    private enum Singleton {
+        INSTANCE;
+        private Singleton4 singleton;
+        //JVM保证这个方法绝对只被实例化一次
+        Singleton() {
+            singleton = new Singleton4();
+        }
+        public Singleton4 getInstance() {
+            return singleton;
+        }
+    }
+}
+```
 
 
 
 
-## 3. 高并发处理的思路及手段 
+
+
+
+
+
+## 6. 高并发处理的思路及手段 
 
 ![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\3.jpg)
 

@@ -98,6 +98,170 @@
 - 现代处理器采用内部缓存技术，导致数据的变化不能及时反映在主存所带来的乱序。
 - 现代编译器为优化而重新安排语句的执行顺序。
 
+### 1.3 JAVA内存模型(JMM)
+
+Java内存模型的主要目标是定义程序中各个变量的访问规则，即在虚拟机中将变量存储到内存和从内存中取出变量这样底层细节。Java内存模型中规定了**所有的变量都存储在主内存中，每条线程还有自己的工作内存**（可以与前面将的处理器的高速缓存类比），线程的工作内存中保存了该线程使用到的变量到主内存副本拷贝，**线程对变量的所有操作（读取、赋值）都必须在工作内存中进行，而不能直接读写主内存中的变量 **。
+
+> JMM规范规定一个线程如何、何时看到由其他线程修改过后的共享变量的值，及在必须时如何同步访问共享变量。
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\5.jpg)
+
+堆是运行时数据区，由垃圾回收管理，优势：动态分配内存大小，生存期不必实现告诉编译器，因为是运行时动态分配内存，垃圾收集器会自动回收不在使用的内存。缺点：由于需要在运行时动态分配内存，存取速度慢一些。栈的存取速度比堆快，仅次于计算机中的寄存器，栈中的数据可以共享，缺点是栈中数据大小与生存期必须时确定的，缺乏灵活性，栈中一般存放基本类型变量。JAVA要求调用栈和本地变量存放在线程栈上，对象存放在堆上。对象的方法和方法中的局部变量存放在线程栈上；一个对象的成员变量可能会随着对象自身存放在堆上，不管成员对象是原始类型还是引用类型；静态成员变量跟随定义一起存放在堆上；而存放在对上的对象可以被所持有对该对象引用的线程访问。当一个线程可以访问一个对象，那么就能访问其成员变量，若两个线程同时调用同一个对象的同一个方法访问对象的成员变量时，这两个线程都拥有**对成员变量的私有拷贝**。
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\8.jpg)
+
+**JVM同步的八种操作**
+
+- lock(锁定)，作用于主内存的变量，把一个变量标识为一条线程独占状态；
+- unlock(解锁)，作用于主内存的变量，把一个处于锁定状态的变量释放出来，释放后的变量才可以被其他线程锁定；
+- read(读取)，作用于主内存的变量，把一个变量值从主内存传输到线程的工作内存中，以便随后的load动作使用；
+- load(载入)，作用于工作内存的变量，它把rea操作从主内存中得到的变量值放入工作内存的变量副本中；
+- use(使用)，作用于工作内存的变量，把工作内存中的一个变量值传递给执行引擎；
+- assign(赋值)，作用于工作内存的变量，它把一个从执行引擎接收到的值赋值给工作内存的变量；
+- store(存储)，作用于工作内存的变量，把工作内存中的一个变量的值传送到主内存中，以便随后的write操作；
+- write(写入)，作用于工作内存的变量，它把store操作从工作内存中一个变量的值传送到主内存的变量中；
+
+**同步规则**
+
+1. 如果要把一个变量从主内存中复制到工作内存，就需要按顺序执行read和load操作，如果把变量从工作内存中同步回主内存中，就要顺序执行store和write操作。但Java内存模型只要求上述操作必须按顺序进行，而没有保证必须是连续执行(中间可以执行其他指令)；
+2. 不允许read和load、store和write操作之一单独出现；
+3. 不允许一个线程丢弃它的最近assign的操作，即变量在工作内存中改变了之后必须同步到主内存中；
+4. 不允许一个线程无原因地(没有发生过任何assign)把数据从工作内存同步到主内存；
+5. 一个新的变量只能在主内存中诞生，不允许在工作内存中直接使用一个未被初始化(load或assign)的变量，即对一个变量实施use和store操作之前，必须先执行过来 assign和load操作；
+6. 一个变量在同一时刻只允许一条线程对其进行lock操作，但lock操作可以被同一条线程重复执行多次，多次执行lock后，只有执相同次数的 unlock操作，变量才会被解锁。lock和unlock必须成对出现；
+7. 如果对一个变量执行lock操作，将会清空工作内存中此变量的值，在执行引擎使用这个变量前需要重新执行load或 assign操作初始化变量的值；
+8. 如果一个变量事先没有被lock操作锁定，则不允许对它执行unlock操作，也不允许去unlock一个被其他线程锁定的变量；
+9. 对一个变量执行unlock操作之前，必须先把此变量同步到主内存中(执行store和write操作)
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\9.jpg)
+
+### 1.4 并发的优势与风险
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\10.jpg)
+
+### 1.5 并发模拟工具
+
+- Postman：http请求模拟工具
+
+- Apache Bench（AB）：Apache附带的工具，测试网站性能
+
+- JMeter：Apache组织开发的压力测试工具，通过创建线程组实现并发测试
+
+  具体线程属性说明如下：
+
+  - 线程数：虚拟用户数，标识模拟多少个用户访问服务。
+  - Ramp-Up Period：虚拟用户增长时长，例如：测试一个考勤系统，实际登录时并不是大家同时登录，而是从某个时刻开始用户陆续开始登录，直到某一时刻得到峰值。一般评估出登录频率最高的时间长度，例如：8:55~9:00登录评率最多，这里应设置为:5*60=300秒。
+  - 循环次数：一个虚拟用户循环进行多少次测试。
+
+  ![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\JMeter线程组属性说明.JPG)
+
+- 代码：Semaphore、CountDownLatch等类实现测试
+
+## 2. 线程安全性
+
+定义：当多个线程访问某个类时，不管运行时环境采用何种调度方式或者这些进程将如何交替执行，并且在主调代码中不需要任何额外的同步或协同，这个类都能表现出正确的行为,那么就称这个类是线程安全的。线程安全需要满足以下特性：
+
+- **原子性**，提供了互斥访问,同一时刻只能有一个线程来对它进行操作；
+- **可见性**，一个线程对主内存的修改可以及时的被其他线程观察到；
+- **有序性**，一个线程观察其他线程中的指令执行顺序,由于指令重排序的存在,该观察结果一般杂乱无序；
+
+### 2.1 **原子性-Atomic包**
+
+以并发多线程AtomicIntefer计数器为例，AtomicXXX包中类实现核心是通过CAS完成，在Atomic包中，使用一个类**Unsafe**.getAndAddInt完成自增操作，其主要实现如下所示
+
+```java
+//如执行：2+1，则var2为当前值，var4为增量，var1为Atomic对象
+public final int getAndAddInt(Object var1, long var2, int var4) {
+    int var5;
+    do {
+        //通过底层方法获取当前值(主内存的值)，var2为工作内存中的值
+        var5 = this.getIntVolatile(var1, var2); 
+        //compareAndSwapInt目标是：若var2与var5一致，则更新var1的值为var5+var4
+    } while(!this.compareAndSwapInt(var1, var2, var5, var5 + var4));
+    return var5;
+}
+//native标识java底层方法，不是通过java实现的
+public native int getIntVolatile(Object var1, long var2);
+public final native boolean compareAndSwapInt(Object var1, long var2, int var4, int var5);
+```
+
+[atomic包中的**AtomicLong**类和**LongAdder**类实现功能一样，增加LongAdder的原因是什么？](https://github.com/aCoder2013/blog/issues/22)CAS (compare-and-swap)本质上是由现代CPU在硬件级实现的原子指令，允许进行无阻塞，多线程的数据操作同时兼顾了安全性以及效率。大部分情况下，CAS都能够提供不错的性能，但是在高竞争的情况下开销可能会成倍增长。由上述代码可以看出AtomicXXX类实现CAS时是通过while循环完成，当修改失败频率过高时，while循环消耗资源就会增加，并且Long类型写入是分两次写入内存中，因此无谓的消耗太多。
+
+**java.util.concurrency.atomic.LongAdder**是Java8新增的一个类，提供了原子累计值的方法。根据文档的描述其性能要优于AtomicLong。首先它有一个基础的值base，在发生竞争的情况下，会有一个Cell数组用于将不同线程的操作离散到不同的节点上去(会根据需要扩容，最大为CPU核数)，`sum()`会将所有Cell数组中的value和base累加作为返回值。核心的思想就是将AtomicLong一个value的更新压力分散到多个value中去，从而降级更新热点，在低并发的时候通过对base的直接更新可以很好的保障和AtomicLong的性能基本保持一致，而在高并发的时候通过分散提高了性能。 **缺点**是LongAdder在统计的时候如果有并发更新，可能导致统计的数据有误差。 
+
+> 在低竞争的情况下AtomicLong表现优于LongAdder，但是在高并发竞争的情况下LongAdder更好。
+
+**AtomicReference & AtomicReferenceFieldUpdater**
+
+AtomicReference用法与AtomicXXX对应类使用一样，例子如下所示：
+
+```java
+private static AtomicReference<Integer> count = new AtomicReference<>(0);
+public static void main(String[] args) {
+    count.compareAndSet(0, 2); // 设置为2
+    count.compareAndSet(0, 1); // 设置失败
+    count.compareAndSet(1, 3); // 设置失败
+    count.compareAndSet(2, 4); // 设置为2
+    count.compareAndSet(3, 5); // 设置失败
+    log.info("count: {}", count);
+}
+```
+
+```java
+private static AtomicIntegerFieldUpdater<TestAtomicFieldUpdater> updater =
+    AtomicIntegerFieldUpdater.newUpdater(TestAtomicFieldUpdater.class, "count");
+//FieldUpdater使用时，对应的变量需要使用volatile修饰且非static变量
+@Getter
+private volatile int count = 100;
+private static TestAtomicFieldUpdater fieldUpdater = new TestAtomicFieldUpdater();
+public static void main(String[] args) {
+    if (updater.compareAndSet(fieldUpdater, 100, 120)) {
+        log.info("update count success: {}", fieldUpdater.getCount());
+    } else {
+        log.info("update count failed: {}", fieldUpdater.getCount());
+    }
+    if (updater.compareAndSet(fieldUpdater, 100, 120)) {
+        log.info("update count success: {}", fieldUpdater.getCount());
+    } else {
+        log.info("update count failed: {}", fieldUpdater.getCount());
+    }
+}
+```
+
+**AtomicStampReference：解决CAS的ABA问题**
+
+CAS有3个操作数，内存值V，旧的预期值A，要修改的新值B。当且仅当预期值A和内存值V相同时，将内存值V修改为B，否则什么都不做。 **CAS算法实现一个重要前提需要取出内存中某时刻的数据，而在下时刻比较并替换，那么在这个时间差类会导致数据的变化**。 
+
+- 场景1，一个线程1从内存位置V中取出A，这时候另一个线程2也从内存中取出A，并且3进行了一些操作变成了B，然后2又将V位置的数据变成A，这时候线程1进行CAS操作发现内存中仍然是A，然后1操作成功。尽管CAS成功，但可能存在潜藏的问题。
+- 场景2，一个用单向链表实现的堆栈，栈顶为A，这时线程1已经知道A.next为B，然后希望用CAS将栈顶替换为B，在1执行指令CAS(A，B)之前，线程2介入，将A、B出栈，再入栈D、C、A，而此时对象B此时处于游离状态，当轮到线程1执行CAS(A，B)操作时，检测发现栈顶仍为A，所以CAS成功，栈顶变为B，但实际上B.next为null，C和D组成的链表不再存在于堆栈中，平白无故就把C、D丢掉 了。
+
+**解决方案**：乐观锁，用版本戳version来对记录或对象标记，避免并发操作带来的问题。在Java中的类AtomicStampedReference<E>也实现了这个作用，它通过包装[E,Integer]的元组来对对象标记版本戳stamp，在CAS操作时带上版本号，每修改一次版本号+1，不但比较对象是否相等，还要比较版本号是否一致，从而避免ABA问题。
+
+```java
+public boolean compareAndSet(V   expectedReference,
+                             V   newReference,
+                             int expectedStamp,
+                             int newStamp) {
+    Pair<V> current = pair;
+    return
+        expectedReference == current.reference &&
+        expectedStamp == current.stamp &&
+        ((newReference == current.reference &&
+          newStamp == current.stamp) ||
+         casPair(current, Pair.of(newReference, newStamp)));
+}
+```
+
+### 2.2 原子性-synchronized
+
+
+
+
+
+
+
+
+
 
 
 ## 2. 高并发处理的思路及手段 

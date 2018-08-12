@@ -1200,6 +1200,501 @@ COW容器非常有用，可以在非常多的并发场景中使用到，什么�
 
 > 这四个方面是通过不可变对象、线程封闭、同步容器及并发容器中总结出来！
 
+## 9. J.U.C.之AQS
+
+AQS(java.util.concurrent.locks.AbstractQueuedSynchronizer)从JDK1.5开始引入了并发包J.U.C (java.util.concurrent)大大提高了Java程序的并发性能，而AQS被认为是J.U.C的核心， 它虽然只是一个类，但也是一个强大的框架， **目的**是为构建依赖于先进先出 (FIFO) 等待队列的阻塞锁和相关同步器（信号量、事件，等等）提供一个框架，这些类**同步器都依赖单个原子 int 值来表示状态**，例如基于AQS实现的同步组件ReentrantLock，类中的state状态表示获取锁的线程数量，若state=0表示还没有线程获取锁，1表示有一个线程获取锁，大于1表示重入锁的数量。**使用AQS的方法是继承**，AQS是基于模板方法实现，使用时只需要继承AQS类并通过实现它的方法管理其状态的方法操作状态。**基于AQS可以实现排它锁和共享锁模式**(独占、共享)，但是两者不能同时实现，例如`ReentrantReadWriteLock`内部通过两个内部类分别实现AQS得到`ReentrantReadLock`和`ReentrantWriteLock`。
+
+>A synchronizer that may be exclusively owned by a thread. This class provides a basis for creating locks and related synchronizers that may entail a notion of ownership. The AbstractOwnableSynchronizer class itself does not manage or use this information. However, subclasses and tools may use appropriately maintained values to help control and monitor access and provide diagnostics.  
+
+同步器一般包含两种方法，一种是acquire，另一种是release。acquire操作阻塞调用的线程，直到或除非同步状态允许其继续执行。而release操作则是通过某种方式改变同步状态，使得一或多个被acquire阻塞的线程继续执行。 
+
+**acquire操作**
+
+```java
+// 循环里不断尝试，典型的失败后重试
+while (synchronization state does not allow acquire) {
+     // 同步状态不允许获取，进入循环体，也就是失败后的处理
+     // 如果当前线程不在等待队列里，则加入等待队列
+     enqueue current thread if not already queued;  
+     // 可能的话，阻塞当前线程
+     possibly block current thread;     
+}
+// 执行到这里，说明已经成功获取，如果之前有加入队列，则出队列。
+dequeue current thread if it was queued; 
+```
+
+**release操作**
+
+```java
+//  更新同步状态
+update synchronization state;
+// 检查状态是否允许一个阻塞线程获取
+if (state may permit a blocked thread to acquire) 
+      // 允许，则唤醒后继的一个或多个阻塞线程。
+      unblock one or more queued threads;     
+```
+
+为了实现上述操作，需要下面三个基本组件的相互协作：
+
+- 同步状态的原子性管理：怎么判断同步器是否可用的？怎么维护原子状态不会出现非法状态？怎么让其他线程看到当前线程对状态的修改？
+- 线程的阻塞与解除阻塞：同步器不可用时，怎么挂起线程？同步器可用时，怎么恢复挂起线程继续执行？
+- 队列的管理：有多个线程被阻塞时，怎么管理这些被阻塞的线程？同步器可用时，应该恢复哪个阻塞线程继续执行？怎么处理取消获取的线程？
+
+**1. 同步状态的原子性管理**
+
+AQS 的状态是通过一个 `int` 类型的整数来表示的，这个字段是用`volatile`关键字修饰的，这样通过简单的原子读写就可以达到内存可视性，减少了同步的需求。子类可以获取和设置状态的值，通过定义状态的值来表示 AQS 对象是否被获取或被释放。 
+
+**2. 线程的阻塞与解除阻塞**
+
+JDK5新增了一个类 `java.util.concurrent.locks.LockSupport` 用来支持创建锁和其他同步类需要的基本线程阻塞、解除阻塞原语。这个类最主要的功能有两个：
+
+- park：把线程阻塞。
+- unpark：让线程恢复执行。
+
+此类以及每个使用它的线程与一个许可关联。如果该许可可用，并且可在进程中使用，则调用 park 将立即返回；否则可能阻塞。如果许可尚不可用，则可以调用 unpark 使其可用（许可不能累积，并且最多只能有一个许可） 。
+
+**3. 队列管理**
+
+​	底层使用双向链表实现的FIFO队列，其中`sync queue`为同步队列，其中`head`节点主要用于后续的调度。`Condition Queue`为单向链表构成的条件队列，不是必须的，只有当程序中使用条件信号量时才会使用，并且可能会存在多个`Condition Queue`。
+
+AQS实现思路：AQS内部维护了一个CLH队列管理锁，线程会首先尝试获取锁，如果失败就将当前线程以及等待状态信息包装成一个Node节点插入到同步队列`Sync Queue`中，接着head节点的直接后继会不断的循环尝试获取锁，若失败就会阻塞自己直到自己被唤醒，而当持有锁的线程释放锁的时候会唤醒队列中的后继线程。
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\11.jpg)
+
+每个结点的 “status” 字段跟踪一个线程是否应该阻塞，插入到队列只要求在 "tail" 上进行仅仅一个原子操作，出队列包含仅更新 "head"额外一点工作用于结点确认它们的后继是谁，部分地为了处理可能的由于超时和中断导致的取消。 "prev" 连接主要是出于处理取消的需求。如果一个结点被取消，它的后继是重新连接到一个非取消的前驱。 
+
+### 9.1 AQS同步组件之CountDownLatch
+
+CountDownLatch是一个同步工具类，用来协调多个线程之间的同步，或者说起到线程之间的通信，而不是用作互斥的作用。 CountDownLatch能够使一个线程在等待另外一些线程完成各自工作之后，再继续执行。使用一个计数器进行实现。计数器初始值为线程的数量。当每一个线程完成自己任务后，计数器的值就会减一。当计数器的值为0时，表示所有的线程都已经完成了任务，然后在CountDownLatch上等待的线程就可以恢复执行任务。 
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\CountdownLatch.png)
+
+**CountDownLatch是一次性的**，计数器的值只能在构造方法中初始化一次，之后没有任何机制再次对其设置值，当CountDownLatch使用完毕后，它不能再次被使用。 若业务上需要可以重置计数器次数的版本，则可以考虑使用`CyclicBarrier`。
+
+**CountDownLatch的共享锁模型**
+
+假设AQS中状态值state=2，对于 CountDownLatch 来说，state=2表示所有调用await方法的线程都应该阻塞，等到同一个latch被调用两次countDown后才能唤醒沉睡的线程。接着线程3和线程4执行了 await方法，此时的状态如下：
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\CountDownLatch的共享锁模型.png) 
+
+上图中的`通知状态`是节点的属性，表示该节点出队后，必须唤醒其后续的节点线程，一个线程在阻塞之前，就会把它前面的节点设置为通知状态，这样便可以实现链式唤醒机制了 。 当线程1和线程2分别执行完latch.countDown方法后，会把state值置为0，此时，通过CAS成功置为0的那个线程将会同时承担起唤醒队列中第一个节点线程的任务，从上图可以看出，第一个节点即为线程3，当线程3恢复执行之后，其发现状态值为通知状态，所以会唤醒后续节点，即线程4节点，然后线程3继续做自己的事情，到这里，线程3和线程4都已经被唤醒，CountDownLatch功成身退。 
+
+```java
+public static void main(String[] args) throws InterruptedException {
+    ExecutorService exec = Executors.newCachedThreadPool();
+    CountDownLatch latch = new CountDownLatch(count);
+    for (int i=0; i<count; i++) {
+        final int threadNum = 1;
+        exec.execute(() -> {
+            try {
+                test(threadNum);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } finally {
+                latch.countDown();
+            }
+        });
+    }
+    //latch.await();
+    //超时后就不关心
+    latch.await(10, TimeUnit.SECONDS);
+    log.info("finish");
+    //关闭线程池
+    exec.shutdown();
+}
+```
+
+### 9.2 AQS同步组件之Semaphore 
+
+信号量(Semaphore)在多线程环境下用于协调各个线程, 以保证它们能够正确、合理的使用公共资源。信号量维护了一个许可集，我们在初始化Semaphore时需要为这个许可集传入一个数量值，该数量值代表同一时间能访问共享资源的线程数量。线程通过`acquire()`方法获取到一个许可，然后对共享资源进行操作，注意如果许可集已分配完了，那么线程将进入等待状态，直到其他线程释放许可才有机会再获取许可，线程释放一个许可通过`release()`方法完成。 
+
+![semaphore类继承关系](E:\GIT\distributed_techs\imgs\java并发编程相关图例\semaphore类继承关系.png)
+
+Semaphore内部存在继承自AQS的内部类Sync以及继承自Sync的公平锁(FairSync)和非公平锁(NofairSync)，子类Semaphore共享锁的获取与释放需要自己实现，这两个方法分别是获取锁的`tryAcquireShared(int arg)`方法和释放锁的`tryReleaseShared(int arg)`方法 。Semaphore的内部类公平锁(FairSync)和非公平锁(NoFairSync)各自实现不同的获取锁方法`tryAcquireShared(int arg)`，毕竟公平锁和非公平锁的获取不同，而释放锁`tryReleaseShared(int arg)`的操作交由Sync实现，因为释放操作都是相同的，因此放在父类Sync中实现当然是最好的。  
+
+**非公平锁中的共享锁**
+
+```java
+//默认创建公平锁，permits指定同一时间访问共享资源的线程数
+public Semaphore(int permits) {
+        sync = new NonfairSync(permits);
+    }
+
+public Semaphore(int permits, boolean fair) {
+     sync = fair ? new FairSync(permits) : new NonfairSync(permits);
+ }
+```
+
+通过默认构造函数创建时，诞生的就是非公平锁
+
+```java
+static final class NonfairSync extends Sync {
+    NonfairSync(int permits) {
+          super(permits);
+    }
+   //调用父类Sync的nonfairTryAcquireShared
+   protected int tryAcquireShared(int acquires) {
+       return nonfairTryAcquireShared(acquires);
+   }
+}
+```
+
+传入的许可数permits传递给父类，最终会传给AQS中的state变量，也就是同步状态的变量，如：
+
+```java
+//AQS中控制同步状态的state变量
+public abstract class AbstractQueuedSynchronizer
+    extends AbstractOwnableSynchronizer {
+    private volatile int state;
+
+    protected final int getState() {
+        return state;
+    }
+    protected final void setState(int newState) {
+        state = newState;
+    }
+    //对state变量进行CAS 操作
+    protected final boolean compareAndSetState(int expect, int update) {
+        return unsafe.compareAndSwapInt(this, stateOffset, expect, update);
+    }
+}
+```
+
+Semaphore的初始化值也就是state的初始化值。当我们调用Semaphore的acquire()方法后，执行过程是这样的，当一个线程请求到来时，如果state值代表的许可数足够使用，那么请求线程将会获得同步状态即对共享资源的访问权，并更新state的值(一般是对state值减1)，但如果state值代表的许可数已为0，则请求线程将无法获取同步状态，线程将被加入到同步队列并阻塞，直到其他线程释放同步状态(一般是对state值加1)才可能获取对共享资源的访问权。调用Semaphore的`acquire()`方法后将会调用到AQS的`acquireSharedInterruptibly()`如下 
+
+```java
+//Semaphore的acquire()
+public void acquire() throws InterruptedException {
+      sync.acquireSharedInterruptibly(1);
+  }
+/**
+*  注意Sync类继承自AQS
+*  AQS的acquireSharedInterruptibly()方法
+*/ 
+public final void acquireSharedInterruptibly(int arg)
+        throws InterruptedException {
+    //判断是否中断请求
+    if (Thread.interrupted())
+        throw new InterruptedException();
+    //如果tryAcquireShared(arg)不小于0，则线程获取同步状态成功
+    if (tryAcquireShared(arg) < 0)
+        //未获取成功加入同步队列等待
+        doAcquireSharedInterruptibly(arg);
+}
+```
+
+从方法名就可以看出该方法是可以中断的，也就是说Semaphore的`acquire()`方法也是可中断的。在`acquireSharedInterruptibly()`方法内部先进行了线程中断的判断，如果没有中断，那么先尝试调用`tryAcquireShared(arg)`方法获取同步状态，如果获取成功，则方法执行结束，若获取失败调用`doAcquireSharedInterruptibly(arg);`方法加入同步队列等待。`tryAcquireShared(arg)`是个模板方法，AQS内部没有提供具体实现，由子类实现，也就是有Semaphore内部自己实现，该方法在Semaphore内部非公平锁的实现如下 
+
+```java
+//Semaphore中非公平锁NonfairSync的tryAcquireShared()
+protected int tryAcquireShared(int acquires) {
+    //调用了父类Sync中的实现方法
+    return nonfairTryAcquireShared(acquires);
+}
+//Syn类中
+abstract static class Sync extends AbstractQueuedSynchronizer {
+    final int nonfairTryAcquireShared(int acquires) {
+         //使用死循环
+         for (;;) {
+             int available = getState();
+             int remaining = available - acquires;
+             //判断信号量是否已小于0或者CAS执行是否成功
+             if (remaining < 0 ||
+                 compareAndSetState(available, remaining))
+                 return remaining;
+         }
+     }
+}
+```
+
+`nonfairTryAcquireShared(int acquires)`方法内部，先获取state的值，并执行减法操作，得到remaining值，如果remaining不小于0，那么线程获取同步状态成功，可访问共享资源，并更新state的值，如果remaining大于0，那么线程获取同步状态失败，将被加入同步队列(通过`doAcquireSharedInterruptibly(arg)`)，注意Semaphore的`acquire()`可能存在并发操作，因此`nonfairTryAcquireShared()`方法体内部采用无锁(CAS)并发的操作保证对state值修改的安全性。如何尝试获取同步状态失败，那么将会执行`doAcquireSharedInterruptibly(int arg)`方法 
+
+```java
+private void doAcquireSharedInterruptibly(int arg)
+        throws InterruptedException {
+     //创建共享模式的结点Node.SHARED，并加入同步队列
+   final Node node = addWaiter(Node.SHARED);
+     boolean failed = true;
+     try {
+         //进入自旋操作
+         for (;;) {
+             final Node p = node.predecessor();
+             //判断前驱结点是否为head
+             if (p == head) {
+                 //尝试获取同步状态
+                 int r = tryAcquireShared(arg);
+                 //如果r>0 说明获取同步状态成功
+                 if (r >= 0) {
+                     //将当前线程结点设置为头结点并传播               
+                     setHeadAndPropagate(node, r);
+                     p.next = null; // help GC
+                     failed = false;
+                     return;
+                 }
+             }
+           //调整同步队列中node结点的状态并判断是否应该被挂起
+           //并判断是否需要被中断，如果中断直接抛出异常，当前结点请求也就结束
+             if (shouldParkAfterFailedAcquire(p, node) &&
+                 parkAndCheckInterrupt())
+                 throw new InterruptedException();
+         }
+     } finally {
+         if (failed)
+             //结束该结点线程的请求
+             cancelAcquire(node);
+     }
+}
+```
+
+在方法中，由于当前线程没有获取同步状态，因此创建一个共享模式（`Node.SHARED`）的结点并通过`addWaiter(Node.SHARED)`加入同步队列，加入完成后，当前线程进入自旋状态，首先判断前驱结点是否为head，如果是，那么尝试获取同步状态并返回r值，如果r大于0，则说明获取同步状态成功，将当前线程设置为head并传播，传播指的是，同步状态剩余的许可数值不为0，通知后续结点继续获取同步状态，到此方法将会return结束，获取到同步状态的线程将会执行原定的任务。但如果前驱结点不为head或前驱结点为head并尝试获取同步状态失败，那么调用`shouldParkAfterFailedAcquire(p, node)`方法判断前驱结点的waitStatus值是否为SIGNAL并调整同步队列中的node结点状态，如果返回true，那么执行`parkAndCheckInterrupt()`方法，将当前线程挂起并返回是否中断线程的flag。 
+
+```java
+private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
+        //获取当前结点的等待状态
+        int ws = pred.waitStatus;
+        //如果为等待唤醒（SIGNAL）状态则返回true
+        if (ws == Node.SIGNAL)
+            return true;
+        //如果ws>0 则说明是结束状态，
+        //遍历前驱结点直到找到没有结束状态的结点
+        if (ws > 0) {
+            do {
+                node.prev = pred = pred.prev;
+            } while (pred.waitStatus > 0);
+            pred.next = node;
+        } else {
+            //如果ws小于0又不是SIGNAL状态，
+            //则将其设置为SIGNAL状态，代表该结点的线程正在等待唤醒。
+            compareAndSetWaitStatus(pred, ws, Node.SIGNAL);
+        }
+        return false;
+}
+private final boolean parkAndCheckInterrupt() {
+        //将当前线程挂起
+        LockSupport.park(this);
+        //获取线程中断状态,interrupted()是判断当前中断状态，
+        //并非中断线程，因此可能true也可能false,并返回
+        return Thread.interrupted();
+}
+```
+
+到此，加入同步队列的整个过程完成。这里小结一下，在AQS中存在一个变量state，当我们创建Semaphore对象传入许可数值时，最终会赋值给state，state的数值代表同一个时刻可同时操作共享数据的线程数量，每当一个线程请求(如调用Semaphored的acquire()方法)获取同步状态成功，state的值将会减少1，直到state为0时，表示已没有可用的许可数，也就是对共享数据进行操作的线程数已达到最大值，其他后来线程将被阻塞，此时AQS内部会将线程封装成共享模式的Node结点，加入同步队列中等待并开启自旋操作。只有当持有对共享数据访问权限的线程执行完成任务并释放同步状态后，同步队列中的对应的结点线程才有可能获取同步状态并被唤醒执行同步操作，注意在同步队列中获取到同步状态的结点将被设置成head并清空相关线程数据(毕竟线程已在执行也就没有必要保存信息了)，AQS通过这种方式便实现共享锁，简单模型如下 
+
+前面我们分析的是可中断的请求，与只对应的不可中的的请求(这些方法都存在于AQS，由子类Semaphore间接调用)如下
+
+```java
+//不可中的acquireShared()
+public final void acquireShared(int arg) {
+        if (tryAcquireShared(arg) < 0)
+            doAcquireShared(arg);
+}
+private void doAcquireShared(int arg) {
+        final Node node = addWaiter(Node.SHARED);
+        boolean failed = true;
+        try {
+            boolean interrupted = false;
+            for (;;) {
+                final Node p = node.predecessor();
+                if (p == head) {
+                    int r = tryAcquireShared(arg);
+                    if (r >= 0) {
+                        setHeadAndPropagate(node, r);
+                        p.next = null; // help GC
+                        if (interrupted)
+                            selfInterrupt();
+                        failed = false;
+                        return;
+                    }
+                }
+                if (shouldParkAfterFailedAcquire(p, node) &&
+                    parkAndCheckInterrupt())
+                    //没有抛出异常中的。。。。
+                    interrupted = true;
+            }
+        } finally {
+            if (failed)
+                cancelAcquire(node);
+        }
+}
+private void setHeadAndPropagate(Node node, int propagate) {
+        Node h = head; // Record old head for check below
+        setHead(node);//设置为头结点
+        /* 
+         * 尝试去唤醒队列中的下一个节点，如果满足如下条件： 
+         * 调用者明确表示"传递"(propagate > 0), 
+         * 或者h.waitStatus为PROPAGATE(被上一个操作设置) 
+         * 并且 
+         *   下一个节点处于共享模式或者为null。 
+         * 
+         * 这两项检查中的保守主义可能会导致不必要的唤醒，但只有在有
+         * 有在多个线程争取获得/释放同步状态时才会发生，所以大多
+         * 数情况下会立马获得需要的信号
+         */  
+        if (propagate > 0 || h == null || h.waitStatus < 0 ||
+            (h = head) == null || h.waitStatus < 0) {
+            Node s = node.next;
+            if (s == null || s.isShared())
+            //唤醒后继节点，因为是共享模式，所以允许多个线程同时获取同步状态
+                doReleaseShared();
+        }
+}
+```
+
+与前面带中断请求`doAcquireSharedInterruptibly(int arg)`方法不同的是少线程中断的判断以及异常抛出，其他操作都一样。了解完请求同步状态的过程，我们看看释放请求状态的过程，当每个线程执行完成任务将会释放同步状态，此时state值一般都会增加1。先从Semaphore的release()方法入手 
+
+```java
+//Semaphore的release()
+public void release() {
+       sync.releaseShared(1);
+}
+//调用到AQS中的releaseShared(int arg) 
+public final boolean releaseShared(int arg) {
+       //调用子类Semaphore实现的tryReleaseShared方法尝试释放同步状态
+      if (tryReleaseShared(arg)) {
+          doReleaseShared();
+          return true;
+      }
+      return false;
+}
+```
+
+Semaphore间接调用了AQS中的releaseShared(int arg)方法，通过`tryReleaseShared(arg)`方法尝试释放同步状态，如果释放成功，那么将调用`doReleaseShared()`唤醒同步队列中后继结点的线程，`tryReleaseShared(int releases)`方法如下   
+
+```java
+//在Semaphore的内部类Sync中实现的
+protected final boolean tryReleaseShared(int releases) {
+       for (;;) {
+              //获取当前state
+             int current = getState();
+             //释放状态state增加releases
+             int next = current + releases;
+             if (next < current) // overflow
+                 throw new Error("Maximum permit count exceeded");
+              //通过CAS更新state的值
+             if (compareAndSetState(current, next))
+                 return true;
+         }
+}
+```
+
+释放同步状态，更新state的值，值得注意的是这里必须操作无锁操作，即for死循环和CAS操作来保证线程安全问题，因为可能存在多个线程同时释放同步状态的场景。释放成功后通过`doReleaseShared()`方法唤醒后继结点。 
+
+```java
+private void doReleaseShared() {
+    /* 
+     * 保证释放动作(向同步等待队列尾部)传递，即使没有其他正在进行的  
+     * 请求或释放动作。如果头节点的后继节点需要唤醒，那么执行唤醒  
+     * 动作；如果不需要，将头结点的等待状态设置为PROPAGATE保证   
+     * 唤醒传递。另外，为了防止过程中有新节点进入(队列)，这里必  
+     * 需做循环，所以，和其他unparkSuccessor方法使用方式不一样  
+     * 的是，如果(头结点)等待状态设置失败，重新检测。 
+     */  
+    for (;;) {
+        Node h = head;
+        if (h != null && h != tail) {
+            // 获取头节点对应的线程的状态
+            int ws = h.waitStatus;
+            // 如果头节点对应的线程是SIGNAL状态，则意味着头
+            //结点的后继结点所对应的线程需要被unpark唤醒。
+            if (ws == Node.SIGNAL) {
+                // 修改头结点对应的线程状态设置为0。失败的话，则继续循环。
+                if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
+                    continue;
+                // 唤醒头结点h的后继结点所对应的线程
+                unparkSuccessor(h);
+            }
+            else if (ws == 0 &&
+                     !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
+                continue;                // loop on failed CAS
+        }
+        // 如果头结点发生变化，则继续循环。否则，退出循环。
+        if (h == head)                   // loop if head changed
+            break;
+    }
+}
+//唤醒传入结点的后继结点对应的线程
+private void unparkSuccessor(Node node) {
+    int ws = node.waitStatus;
+      if (ws < 0)
+          compareAndSetWaitStatus(node, ws, 0);
+       //拿到后继结点
+      Node s = node.next;
+      if (s == null || s.waitStatus > 0) {
+          s = null;
+          for (Node t = tail; t != null && t != node; t = t.prev)
+              if (t.waitStatus <= 0)
+                  s = t;
+      }
+      if (s != null)
+          //唤醒该线程
+          LockSupport.unpark(s.thread);
+}
+```
+
+显然`doReleaseShared()`方法中通过调用`unparkSuccessor(h)`方法唤醒head的后继结点对应的线程。注意这里把head的状态设置为`Node.PROPAGATE`是为了保证唤醒传递，博主认为是可能同时存在多个线程并发争取资源，如果线程A已执行到doReleaseShared()方法中，正被唤醒后正准备替换head（实际上还没替换），而线程B又跑来请求资源，此时调用`setHeadAndPropagate(Node node, int propagate)`时，传入的propagate=0 
+
+```java
+if (propagate > 0 || h == null || h.waitStatus < 0 ||
+            (h = head) == null || h.waitStatus < 0) {
+            Node s = node.next;
+            if (s == null || s.isShared())
+            //唤醒后继节点，因为是共享模式，所以允许多个线程同时获取同步状态
+                doReleaseShared();
+}
+```
+
+为了保证持续唤醒后继结点的线程即`doReleaseShared()`方法被调用，可以把head的waitStatus设置为`Node.PROPAGATE`，这样就保证线程B也可以执行`doReleaseShared()`保证后续结点被唤醒或传播，注意`doReleaseShared()`可以同时被释放操作和获取操作调用，但目的都是为唤醒后继节点，因为是共享模式，所以允许多个线程同时获取同步状态。 
+
+**公平锁中的共享锁**
+
+公平锁的中的共享模式实现除了在获取同步状态时与非公平锁不同外，其他基本一样，看看公平锁的实现 
+
+```java
+static final class FairSync extends Sync {
+        FairSync(int permits) {
+            super(permits);
+        }
+
+        protected int tryAcquireShared(int acquires) {
+            for (;;) {
+                //这里是重点，先判断队列中是否有结点再执行
+                //同步状态获取。
+                if (hasQueuedPredecessors())
+                    return -1;
+                int available = getState();
+                int remaining = available - acquires;
+                if (remaining < 0 ||
+                    compareAndSetState(available, remaining))
+                    return remaining;
+            }
+        }
+}
+```
+
+与非公平锁`tryAcquireShared(int acquires)`方法实现的唯一不同是，在尝试获取同步状态前，先调用了`hasQueuedPredecessors()`方法判断同步队列中是否存在结点，如果存在则返回-1，即将线程加入同步队列等待。从而保证先到来的线程请求一定会先执行，也就是所谓的公平锁。至于其他操作，与前面分析的非公平锁一样。 
+
+**总结**
+
+AQS中通过state值来控制对共享资源访问的线程数，每当线程请求同步状态成功，state值将会减1，如果超过限制数量的线程将被封装共享模式的Node结点加入同步队列等待，直到其他执行线程释放同步状态，才有机会获得执行权，而每个线程执行完成任务释放同步状态后，state值将会增加1，这就是共享锁的基本实现模型。至于公平锁与非公平锁的不同之处在于公平锁会在线程请求同步状态前，判断同步队列是否存在Node，如果存在就将请求线程封装成Node结点加入同步队列，从而保证每个线程获取同步状态都是先到先得的顺序执行的。非公平锁则是通过竞争的方式获取，不管同步队列是否存在Node结点，只有通过竞争获取就可以获取线程执行权。 
+
+### 9.3 AQS同步组件之CyclicBarrier
+
+
+
+
+
+### 9.4 AQS同步组件之ReentrantLock
+
+
+
+### 9.5 AQS同步组件之Conditon
+
+
+
+### 9.6 AQS同步组件之FutureTask
+
+
+
 
 
 

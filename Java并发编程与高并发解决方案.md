@@ -2560,13 +2560,150 @@ final boolean transferForSignal(Node node) {
 
 ![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\同步队列与等待队列间节点的状态转换.png)
 
+### 9.6 JUC之FutureTask
 
+**Runnable**
 
+它只有一个run()函数，用于将耗时操作写在其中，该函数没有返回值。然后使用某个线程去执行该runnable即可实现多线程，Thread类在调用start()函数后就是执行的是Runnable的run()函数。Runnable的声明如下 :
 
+```java
+public interface Runnable {
+    public abstract void run();
+}
+```
 
-### 9.6 AQS同步组件之FutureTask
+ **Callable**
 
+Callable中有一个call()函数，但是call()函数有返回值，而Runnable的run()函数不能将结果返回给客户程序。Callable的声明如下 : 
 
+```java
+public interface Callable<V> {
+    V call() throws Exception;
+}
+```
+
+这是一个泛型接口，call()函数返回的类型就是客户程序传递进来的V类型。Executor就是Runnable和Callable的调度容器，Future就是对于具体的Runnable或者Callable任务的执行结果进行取消、查询是否完成、获取结果、设置结果操作。get方法会阻塞，直到任务返回结果( [Future简介](http://openhome.cc/Gossip/DesignPattern/FuturePattern.htm) )。具体的实现类为java.util.concurrent.FutureTask<V> ，Future声明如下 : 
+
+```java
+public interface Future<T>
+{
+    V get() throws ...;
+    V get(long timeout, TimeUnit unit) throws ...;
+    void cancle(boolean mayInterrupt);
+    boolean isCancelled();
+    boolean isDone();
+}
+```
+
+**FutueTask**
+
+FutureTask则是一个RunnableFuture<V>，而RunnableFuture实现了Runnbale又实现了Futrue<V>这两个接口 
+
+```java
+public class FutureTask<V> implements RunnableFuture<V>;
+public interface RunnableFuture<V> extends Runnable, Future<V> {
+    void run();
+}
+```
+
+另外它还可以包装Runnable和Callable<V>， 由构造函数注入依赖
+
+```java
+public FutureTask(Callable<V> callable) {
+    if (callable == null)
+      throw new NullPointerException();
+    this.callable = callable;
+    this.state = NEW;	   // ensure visibility of callable
+}
+ 
+public FutureTask(Runnable runnable, V result) {
+    this.callable = Executors.callable(runnable, result);
+    this.state = NEW;	   // ensure visibility of callable
+}
+```
+
+Runnable注入会被Executors.callable()函数转换为Callable类型，即FutureTask最终都是执行Callable类型的任务。该适配函数的实现如下 
+
+```java
+public static <T> Callable<T> callable(Runnable task, T result) {
+    if (task == null)
+        throw new NullPointerException();
+    return new RunnableAdapter<T>(task, result);
+}
+static final class RunnableAdapter<T> implements Callable<T> {
+    final Runnable task;
+    final T result;
+    RunnableAdapter(Runnable task, T result) {
+        this.task = task;
+        this.result = result;
+    }
+    public T call() {
+        task.run();
+        return result;
+    }
+}
+```
+
+由于FutureTask实现了Runnable，因此它既可以通过Thread包装来直接执行，也可以提交给ExecuteService来执行。并且还可以直接通过get()函数获取执行结果，该函数会阻塞，直到结果返回。 
+
+**使用举例**
+
+```java
+/**
+     * 其中Runnable实现的是void run()方法，无返回值；
+     * Callable实现的是V call()方法，并且可以返回执行结果。
+     * 其中Runnable可以提交给Thread来包装下，直接启动一个线程来执行，而Callable则一般都是提交给ExecutorService来执行
+     */
+static void futureDemo(){
+    try {
+        /**
+    	* 提交Runnable则没有返回值，futurn没有数据
+    	* 使用submit提交任务会返回Future对象，而使用execute没有返回值。
+    	* submit提交Runnable任务本质上也是转化为Callable去执行
+    	*/
+        Future<?>  result = mExecutor.submit(new Runnable() {
+            @Override
+            public void run() {
+                fibc(20);	  
+            }
+        });
+        System.out.println("future result from runnable:" + result.get());
+        /**
+		* 提交Callable,有返回值，future中能够获取返回值
+		*/
+        Future<Integer> result2 = mExecutor.submit(new Callable<Integer>(){
+            @Override
+            public Integer call() throws Exception {
+                return fibc(20);
+            }
+        });
+        System.out.println("future result from  callable:" + result2.get());
+        /**
+		* FutureTask是一个RunnableFuture<V>，而RunnableFuture实现了Runnbale又实
+		* 现了Futrue<V>这两个接口同时包装了Runnable和Callable<V>， 由构造函数注入
+		* 依赖。Runnable注入会被Executors.callable()函数转换为Callable类型，即
+		* FutureTask最终都是执行Callable类型的任务
+		*/
+        FutureTask<Integer> futureTask = new FutureTask<Integer>(
+            new Callable<Integer>() {
+                @Override
+                public Integer call() throws Exception {
+                    return fibc(20);
+                }
+            });
+        //提交futureTask
+        mExecutor.submit(futureTask);
+        System.out.println("future result from futureTask:" + futureTask.get());
+
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    } catch (ExecutionException e) {
+        e.printStackTrace();
+    }
+}
+```
+
+### 9.7 JUC之Fork/Join
 
 
 

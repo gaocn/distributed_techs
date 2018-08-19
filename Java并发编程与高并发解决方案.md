@@ -3708,12 +3708,6 @@ scheduledPool.schedule(new ThreadForpools(index),3, TimeUnit.SECONDS);
 - 宁可使用同步代码块而不使用同步的方法；
 - 避免使用静态变量！
 
----
-
-## 6. 高并发处理的思路及手段 
-
-![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\3.jpg)
-
 
 
 

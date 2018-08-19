@@ -578,8 +578,6 @@ public class SyncException {
    }
    ```
 
-   
-
 2. 不要使用String的常量加锁，会出现死循环问题，synchronized代码块对字符串的锁，注意String常量池的缓存功能。
 
    ```java
@@ -1255,7 +1253,7 @@ JDK5新增了一个类 `java.util.concurrent.locks.LockSupport` 用来支持创�
 
 **3. 队列管理**
 
-​	底层使用双向链表实现的FIFO队列，其中`sync queue`为同步队列，其中`head`节点主要用于后续的调度。`Condition Queue`为单向链表构成的条件队列，不是必须的，只有当程序中使用条件信号量时才会使用，并且可能会存在多个`Condition Queue`。
+	底层使用双向链表实现的FIFO队列，其中`sync queue`为同步队列，其中`head`节点主要用于后续的调度。`Condition Queue`为单向链表构成的条件队列，不是必须的，只有当程序中使用条件信号量时才会使用，并且可能会存在多个`Condition Queue`。
 
 AQS实现思路：AQS内部维护了一个CLH队列管理锁，线程会首先尝试获取锁，如果失败就将当前线程以及等待状态信息包装成一个Node节点插入到同步队列`Sync Queue`中，接着head节点的直接后继会不断的循环尝试获取锁，若失败就会阻塞自己直到自己被唤醒，而当持有锁的线程释放锁的时候会唤醒队列中的后继线程。
 
@@ -2255,7 +2253,7 @@ private void unparkSuccessor(Node node) {
 }
 ```
 
-​	从代码执行操作来看，这里主要作用是用unpark()唤醒同步队列中最前边未放弃线程(也就是状态为CANCELLED的线程结点s)。此时，回忆前面分析进入自旋的函数`acquireQueued()`，s结点的线程被唤醒后，会进入`acquireQueued()`函数的`if (p == head && tryAcquire(arg))`的判断，如果`p!=head`也不会有影响，因为它会执行`shouldParkAfterFailedAcquire()`，由于s通过`unparkSuccessor()`操作后已是同步队列中最前边未放弃的线程结点，那么通过	shouldParkAfterFailedAcquire()内部对结点状态的调整，s也必然会成为head的next结点，因此再次自旋时`p==head`就成立了，然后s把自己设置成head结点，表示自己已经获取到资源了，最终`acquire()`也返回了，这就是独占锁释放的过程。
+	从代码执行操作来看，这里主要作用是用unpark()唤醒同步队列中最前边未放弃线程(也就是状态为CANCELLED的线程结点s)。此时，回忆前面分析进入自旋的函数`acquireQueued()`，s结点的线程被唤醒后，会进入`acquireQueued()`函数的`if (p == head && tryAcquire(arg))`的判断，如果`p!=head`也不会有影响，因为它会执行`shouldParkAfterFailedAcquire()`，由于s通过`unparkSuccessor()`操作后已是同步队列中最前边未放弃的线程结点，那么通过	shouldParkAfterFailedAcquire()内部对结点状态的调整，s也必然会成为head的next结点，因此再次自旋时`p==head`就成立了，然后s把自己设置成head结点，表示自己已经获取到资源了，最终`acquire()`也返回了，这就是独占锁释放的过程。
 
  	总之，在AQS同步器中维护着一个同步队列，当线程获取同步状态失败后，将会被封装成Node结点，加入到同步队列中并进行自旋操作，当当前线程结点的前驱结点为head时，将尝试获取同步状态，获取成功将自己设置为head结点。在释放同步状态时，则通过调用子类(ReetrantLock中的Sync内部类)的`tryRelease(int releases)`方法释放同步状态，释放成功则唤醒后继结点的线程。 
 
@@ -2906,11 +2904,11 @@ graph TD
   D[LinkedBlockingQueue]
   E[PriorityBlockingQueue]
   F[SynchronousQueue]
-  style B  fill:#f9f,stroke:#333,stroke-width:4px
+  style B  fill:#cff,stroke:#333,stroke-width:4px
   style C  fill:#f9f,stroke:#333,stroke-width:4px
-  style F  fill:#f9f,stroke:#333,stroke-width:4px
+  style F  fill:#cff,stroke:#333,stroke-width:4px
   style E  fill:#f9f,stroke:#333,stroke-width:4px
-  style D  fill:#f9f,stroke:#333,stroke-width:4px
+  style D  fill:#cff,stroke:#333,stroke-width:4px
   A --> B
   A --> C
   A --> D
@@ -2920,30 +2918,277 @@ graph TD
 
 **1. ArrayBlockingQueue**       
 
-基于数组的阻塞队列实现，在ArrayBlockingQueue内部，维护了一个定长数组，以便缓存队列中的数据对象，这是一个常用的阻塞队列，除了一个定长数组外，ArrayBlockingQueue内部还保存着两个整形变量，分别标识着队列的头部和尾部在数组中的位置。 　　
+基于数组的有界阻塞队列实现，在ArrayBlockingQueue内部，维护了一个定长数组，以便缓存队列中的数据对象，这是一个常用的阻塞队列，除了一个定长数组外，ArrayBlockingQueue内部还保存着两个整形变量，分别标识着队列的头部和尾部在数组中的位置。 　　
 
 ArrayBlockingQueue在生产者放入数据和消费者获取数据，都是共用同一个锁对象，由此也意味着两者无法真正并行运行，这点尤其不同于LinkedBlockingQueue；按照实现原理来分析，ArrayBlockingQueue完全可以采用分离锁，从而实现生产者和消费者操作的完全并行运行。Doug Lea之所以没这样去做，也许是因为ArrayBlockingQueue的数据写入和获取操作已经足够轻巧，以至于引入独立的锁机制，除了给代码带来额外的复杂性外，其在性能上完全占不到任何便宜。 ArrayBlockingQueue和LinkedBlockingQueue间还有一个明显的不同之处在于，前者在插入或删除元素时不会产生或销毁任何额外的对象实例，而后者则会生成一个额外的Node对象。这在长时间内需要高效并发地处理大批量数据的系统中，其对于GC的影响还是存在一定的区别。而在创建ArrayBlockingQueue时，我们还可以控制对象的内部锁是否采用公平锁，默认采用非公平锁。  
 
 **2. LinkedBlockingQueue**       
 
-基于链表的阻塞队列，同ArrayListBlockingQueue类似，其内部也维持着一个数据缓冲队列（该队列由一个链表构成），当生产者往队列中放入一个数据时，队列会从生产者手中获取数据，并缓存在队列内部，而生产者立即返回；只有当队列缓冲区达到最大值缓存容量时（LinkedBlockingQueue可以通过构造函数指定该值），才会阻塞生产者队列，直到消费者从队列中消费掉一份数据，生产者线程会被唤醒，反之对于消费者这端的处理也基于同样的原理。而LinkedBlockingQueue之所以能够高效的处理并发数据，还因为其对于生产者端和消费者端分别采用了独立的锁来控制数据同步，这也意味着在高并发的情况下生产者和消费者可以并行地操作队列中的数据，以此来提高整个队列的并发性能。 作为开发者，我们需要注意的是，如果构造一个LinkedBlockingQueue对象，而没有指定其容量大小，LinkedBlockingQueue会默认一个类似无限大小的容量（Integer.MAX_VALUE），这样的话，如果生产者的速度一旦大于消费者的速度，也许还没有等到队列满阻塞产生，系统内存就有可能已被消耗殆尽了。 
+基于链表的阻塞队列，同ArrayListBlockingQueue类似，其内部也维持着一个数据缓冲队列（该队列由一个链表构成），当生产者往队列中放入一个数据时，队列会从生产者手中获取数据，并缓存在队列内部，而生产者立即返回；只有当队列缓冲区达到最大值缓存容量时（通过构造函数指定该值），才会阻塞生产者队列，直到消费者从队列中消费掉一份数据，生产者线程会被唤醒，反之对于消费者这端的处理也基于同样的原理。而LinkedBlockingQueue之所以能够高效的处理并发数据，还因为其对于生产者端和消费者端分别采用了独立的锁来控制数据同步，这也意味着在高并发的情况下生产者和消费者可以并行地操作队列中的数据，以此来提高整个队列的并发性能。 作为开发者，我们需要注意的是，如果构造一个LinkedBlockingQueue对象，而没有指定其容量大小，LinkedBlockingQueue会默认一个类似无限大小的容量（Integer.MAX_VALUE），这样的话，如果生产者的速度一旦大于消费者的速度，也许还没有等到队列满阻塞产生，系统内存就有可能已被消耗殆尽了。 
 
 **3. DelayQueue**
-DelayQueue中的元素只有当其指定的延迟时间到了，才能够从队列中获取到该元素。DelayQueue是一个没有大小限制的队列，因此往队列中插入数据的操作（生产者）永远不会被阻塞，而只有获取数据的操作（消费者）才会被阻塞。
+DelayQueue中的元素只有当其指定的延迟时间到了，才能够从队列中获取到该元素，元素需要实现Delay接口。DelayQueue是一个没有大小限制的队列，因此往队列中插入数据的操作（生产者）永远不会被阻塞，而只有获取数据的操作（消费者）才会被阻塞。执行定时任务，将任务按延迟时间长短放入队列中，延迟时间最短的最先被执行，存放在队列头部的是延迟期满后保存时间最长的任务 
 使用场景：DelayQueue使用场景较少，但都相当巧妙，常见的例子比如使用一个DelayQueue来管理一个超时未响应的连接队列。
 **4. PriorityBlockingQueue**
       基于优先级的阻塞队列（优先级的判断通过构造函数传入的Compator对象来决定），但需要注意的是PriorityBlockingQueue并不会阻塞数据生产者，而只会在没有可消费的数据时，阻塞数据的消费者。因此使用的时候要特别注意，生产者生产数据的速度绝对不能快于消费者消费数据的速度，否则时间一长，会最终耗尽所有的可用堆内存空间。在实现PriorityBlockingQueue时，内部控制线程同步的锁采用的是公平锁。
 **5. SynchronousQueue**
-      一种无缓冲的等待队列，类似于无中介的直接交易，有点像原始社会中的生产者和消费者，生产者拿着产品去集市销售给产品的最终消费者，而消费者必须亲自去集市找到所要商品的直接生产者，如果一方没有找到合适的目标，那么对不起，大家都在集市等待。相对于有缓冲的BlockingQueue来说，少了一个中间经销商的环节（缓冲区），如果有经销商，生产者直接把产品批发给经销商，而无需在意经销商最终会将这些产品卖给那些消费者，由于经销商可以库存一部分商品，因此相对于直接交易模式，总体来说采用中间经销商的模式会吞吐量高一些（可以批量买卖）；但另一方面，又因为经销商的引入，使得产品从生产者到消费者中间增加了额外的交易环节，单个产品的及时响应性能可能会降低。
+      一种无缓冲的同步等待队列，类似于无中介的直接交易，有点像原始社会中的生产者和消费者，生产者拿着产品去集市销售给产品的最终消费者，而消费者必须亲自去集市找到所要商品的直接生产者，如果一方没有找到合适的目标，那么对不起，大家都在集市等待。相对于有缓冲的BlockingQueue来说，少了一个中间经销商的环节（缓冲区），如果有经销商，生产者直接把产品批发给经销商，而无需在意经销商最终会将这些产品卖给那些消费者，由于经销商可以库存一部分商品，因此相对于直接交易模式，总体来说采用中间经销商的模式会吞吐量高一些（可以批量买卖）；但另一方面，又因为经销商的引入，使得产品从生产者到消费者中间增加了额外的交易环节，单个产品的及时响应性能可能会降低。
 　　声明一个SynchronousQueue有两种不同的方式，它们之间有着不太一样的行为。公平模式和非公平模式的区别:
 　　如果采用公平模式：SynchronousQueue会采用公平锁，并配合一个FIFO队列来阻塞多余的生产者和消费者，从而体系整体的公平策略；
 　　但如果是非公平模式（SynchronousQueue默认）：SynchronousQueue采用非公平锁，同时配合一个LIFO队列来管理多余的生产者和消费者，而后一种模式，如果生产者和消费者的处理速度有差距，则很容易出现饥渴的情况，即可能有某些生产者或者是消费者的数据永远都得不到处理。
 
+## 10. 线程池
+
+使用`new thread`创建线程的缺点：1、每一次`new thread`新建对象，性能差；2、线程缺乏统一管理，可能无限制的新建线程，相互竞争，也有可能占用过多系统资源导致死机或OOM；3、缺少更多功能，如定时执行、定期执行、线程中断。
+
+使用线程池的好处：1、重用存在的线程，减少对象创建、消亡的开销，性能好；2、可有效控制最大并发线程数，提高系统资源利用率，同时可以避免过多资源竞争，避免阻塞；3、提供定时执行、定期执行、单线程、并发数控制等功能。
+
+**线程池的处理流程**
+
+创建线程池需要使用 `ThreadPoolExecutor` 类，它的构造函数参数如下：：
+
+```java
+public ThreadPoolExecutor(int corePoolSize,    //核心线程的数量
+                   int maximumPoolSize,    //最大线程数量
+                   long keepAliveTime,    //超出核心线程数量以外的线程空余存活时间
+                   TimeUnit unit,    //存活时间的单位
+                   BlockingQueue<Runnable> workQueue,    //保存待执行任务的队列
+                   ThreadFactory threadFactory,    //创建新线程使用的工厂
+                   RejectedExecutionHandler handler // 当任务无法执行时的处理器
+      ) {...}
+```
+
+- **corePoolSize** 在线程数少于核心数量时，有新任务进来就新建一个线程，等超出核心数量后，就不会新建线程了，空闲的线程就得去任务队列里取任务执行了。
+- **maximumPoolSize** 等于核心线程池数量 + 核心以外的数量，如果核心池满了，并且池中线程数小于最大线程数，会再创建新的线程加入任务队列中。
+- **keepAliveTime** 当线程数大于核心时，线程没有任务执行时最多保持多久时间终止。，如果任务很多，并且每个任务执行的时间比较短，可以适当调大这个参数来提高线程的利用率。 
+- **workQueue** 存储待执行任务的阻塞队列，会对线程池产生很大影响。
+- **threadFactory** 每个线程创建的地方 
+- **handler** 饱和策略，线程池和等待队列都已经饱和时采取的策略，这里有四种：CallerRunsPolicy、AbortPolicy、DiscardPolicy、DiscardOldestPolicy。
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\ThreadQueueExecutor核心参数.png)
+
+ThreadPoolExecutor中额定的“工人”数量由corePoolSize决定，当任务数量超过额定工人数量时，将任务缓存在BlockingQueue之中，当发现如果连queue中也放不下时（可能是因为使用有界queue，也可能是使用SynchronousQueue），ThreadPoolExecutor会请求“老板”再派几个“工人”过来。 接下来发生的事情有两种情况： 
+
+1. **任务不再过来了 - keepAliveTime**
+
+   如果一个线程刚执行完成就被线程池回收后，又有任务要执行，那么这一来一回太频繁，就会导致不必要的资源消耗。为此在线程执行完成一段时间后，允许线程在线程池中等待一段时间，在确定没有任务执行时(keepAliveTime超时)，再回收该线程。
+
+2. **任务仍然继续过来 - RejectedExecutionHandler**
+
+   另一种情况是，即使向老板借了工人，但是任务还是继续过来，还是忙不过来，这时整个队伍只好拒绝接受了。 `RejectedExecutionHandler`接口提供了对于拒绝任务的处理的自定方法的机会。在`ThreadPoolExecutor`中已经默认包含了4中策略：
+
+   - **CallerRunsPolicy** 只要线程池没关闭，就直接用调用者所在线程来运行任务 。此策略提供简单的反馈控制机制，能够减缓新任务的提交速度。这个策略显然不想放弃执行任务。但是由于池中已经没有任何资源了，那么就直接使用调用该execute的线程本身来执行。 
+
+     ```java
+     public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {  
+         if (!e.isShutdown()) {  
+             r.run();  
+         }  
+     }
+     ```
+
+   - **AbortPolicy** 处理程序遭到拒绝将抛出运行时 `RejectedExecutionException` 
+
+     ```java
+     public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {  
+         throw new RejectedExecutionException();  
+     } 
+     ```
+
+   - **DiscardPolicy** 不能执行的任务将被删除
+
+     ```java
+     public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {  
+     } 
+     ```
+
+   - **DiscardOldestPolicy** 如果执行程序尚未关闭，则位于工作队列头部的任务将被删除，然后重试执行程序（如果再次失败，则重复此过程） 。
+
+     ```java
+     public void rejectedExecution(Runnable r, ThreadPoolExecutor e) {  
+         if (!e.isShutdown()) {  
+             e.getQueue().poll();  
+             e.execute(r);  
+         }  
+     } 
+     ```
+
+   > 如果BlockingQueue是无界的，那么永远不会触发maximumPoolSize，自然keepAliveTime也就没有了意义。 
+   >
+   > 如果核心数较小，有界BlockingQueue数值又较小，同时keepAliveTime又设的很小，如果任务频繁，那么系统就会频繁的申请回收线程。 
+
+参数介绍如注释所示，要了解这些参数，就需要了解线程池具体的执行方法ThreadPoolExecutor. execute
+
+```java
+
+public void execute(Runnable command) {
+    if (command == null)
+        throw new NullPointerException();
+    int c = ctl.get();
+    //1.当前池中线程比核心数少，新建一个线程执行任务
+    if (workerCountOf(c) < corePoolSize) {   
+        if (addWorker(command, true))
+            return;
+        c = ctl.get();
+    }
+    //2.核心池已满，但任务队列未满，添加到队列中
+    if (isRunning(c) && workQueue.offer(command)) {   
+        int recheck = ctl.get();
+         //如果这时被关闭了，拒绝任务
+        if (! isRunning(recheck) && remove(command))   
+            reject(command);
+         //如果之前的线程已被销毁完，新建一个线程
+        else if (workerCountOf(recheck) == 0)   
+            addWorker(null, false);
+    }
+    //3.核心池已满，队列已满，试着创建一个新线程
+    else if (!addWorker(command, false))
+        //如果创建新线程失败了，说明线程池被关闭或者线程池完全满了，拒绝任务
+        reject(command);    
+}
+```
+
+**线程池的状态**
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\线程池的状态.png)
+
+1. **RUNNING**
+
+   **状态说明**：线程池处在RUNNING状态时，能够接收新任务，以及对已添加的任务进行处理。
+
+   **状态切换**：线程池的初始化状态是RUNNING。换句话说，线程池被一旦被创建，就处于RUNNING状态，并且线程池中的任务数为0！ 
+
+   线程池使用一个AtomicInteger的ctl变量将 workerCount（工作线程数量）和 runState（运行状态）两个字段压缩在一起，
+
+   ```java
+   //原子状态控制数
+   private final AtomicInteger ctl = new AtomicInteger(ctlOf(RUNNING, 0));
+   //29比特位
+   private static final int COUNT_BITS = Integer.SIZE - 3;
+   //实际容量 2^29-1
+   private static final int CAPACITY   = (1 << COUNT_BITS) - 1;
+   
+   // runState is stored in the high-order bits
+   // runState存储在高位中
+   private static final int RUNNING    = -1 << COUNT_BITS;
+   private static final int SHUTDOWN   =  0 << COUNT_BITS;
+   private static final int STOP       =  1 << COUNT_BITS;
+   private static final int TIDYING    =  2 << COUNT_BITS;
+   private static final int TERMINATED =  3 << COUNT_BITS;
+   
+   private static int ctlOf(int rs, int wc) { return rs | wc; }
+   ```
+
+2. **SHUTDOWN**
+
+   **状态说明**：线程池处在SHUTDOWN状态时，不接收新任务，但能处理已添加的任务。       
+
+   **状态切换**：调用线程池的`shutdown()`接口时，线程池由`RUNNING -> SHUTDOWN`。 
+
+3. **STOP**
+
+   **状态说明**：线程池处在STOP状态时，不接收新任务，不处理已添加的任务，并且会中断正在处理的任务。  
+
+   **状态切换**：调用线程池的`shutdownNow()`接口时，线程池由(`RUNNING or SHUTDOWN ) -> STOP`。 
+
+4. **TIDYING**
+
+   **状态说明**：当所有的任务已终止，ctl记录的”任务数量”为0，线程池会变为TIDYING状态。当线程池变为TIDYING状态时，会执行钩子函数`terminated()`。`terminated()`在`ThreadPoolExecutor`类中是空的，若用户想在线程池变为TIDYING时，进行相应的处理；可以通过重载`terminated()`函数来实现。 
+
+   **状态切换**：当线程池在SHUTDOWN状态下，阻塞队列为空并且线程池中执行的任务也为空时，就会由` SHUTDOWN -> TIDYING`。当线程池在STOP状态下，线程池中执行的任务为空时，就会由`STOP -> TIDYING`。 
+
+5. **TERMINATED**
+
+   **状态说明**：线程池彻底终止，就变成TERMINATED状态。 
+
+   **状态切换**：线程池处在TIDYING状态时，执行完`terminated()`之后，就会由 `TIDYING -> TERMINATED`。 
+
+**线程池的主要方法**
+
+1. execute() 提交任务给线程池执行；
+2. submit()提交任务给线程池执行，能够返回执行结果，相当于execute+Future;
+3. shutdown()关闭线程池，等待任务都执行完；
+4. shutdownNow()关闭线程池，不等待任务执行完；
+5. getTaskCount()线程池已执行和未执行的任务总数
+6. getCompletedTaskCount()已完成的任务数量
+7. getPoolSize()线程池当前的线程数量；
+8. getActiveCount()当前线程池中正在执行任务的线程数量；
+
+**Executors框架**
+
+Eexecutor作为灵活且强大的异步执行框架，其支持多种不同类型的任务执行策略，提供了一种标准的方法将任务的提交过程和执行过程解耦开发，基于生产者-消费者模式，其提交任务的线程相当于生产者，执行任务的线程相当于消费者，并用Runnable来表示任务，Executor的实现还提供了对生命周期的支持，以及统计信息收集，应用程序管理机制和性能监视等机制。 
+
+- **Executor：**一个接口，其定义了一个接收Runnable对象的方法executor，其方法签名为executor(Runnable command) 
+- **ExecutorService**提供了管理Eecutor生命周期的方法，ExecutorService的生命周期包括了：运行  关闭和终止三种状态。 **AbstractExecutorServicew**为ExecutorService执行方法的默认实现 
+- **ExecutorCompletionService**实现了CompletionService，将执行完成的任务放到阻塞队列中，通过take或poll方法来获得执行结果 
+- **ScheduledExecutorService**是可定时调度任务的接口，**ScheduledThreadPoolExecutor**为其实现类
+- **ThreadPoolExecutor**线程池，可以通过调用Executors以下静态工厂方法来创建线程池并返回一个ExecutorService对象 
+
+![](E:\GIT\distributed_techs\imgs\java并发编程相关图例\线程池类图.png)
+
+> Executors利用工厂模式向我们提供了4种线程池实现方式，但是并不推荐使用，原因是使用Executors创建线程池不会传入这个参数而使用默认值所以我们常常忽略这一参数，而且默认使用的参数会导致资源浪费，不可取。 
+
+通过Executors提供四种线程池，分别为： 
+
+1. **newCachedThreadPool**创建一个可缓存线程池，如果线程池长度超过处理需要，可灵活回收空闲线程，若无可回收，则新建线程。 
+2. **newFixedThreadPool** 创建一个定长线程池，可控制线程最大并发数，超出的线程会在队列中等待。
+3.  **newScheduledThreadPool** 创建一个定长线程池，支持定时及周期性任务执行。 
+4. **newSingleThreadExecutor** 创建一个单线程化的线程池，它只会用唯一的工作线程来执行任务，保证所有任务按照指定顺序(FIFO, LIFO, 优先级)执行。 
+
+线程池只是为了控制应用中处理某项业务中防止高并发问题带来的线程不安全的发生的概率。在目前的测试用，还没有发现线程可以重用这个概念，因为线程开启后，用完就关闭了，不可以再次开启的，查看源码发现会每次新创建一个线程用来处理业务。
+
+```java
+//创建一个可缓存线程池，应用中存在的线程数可以无限大
+ExecutorService newCachedThreadPool = Executors.newCachedThreadPool();
+newCachedThreadPool.execute(new ThreadForpools(index));
+
+//线程池允许同时存在两个线程
+ExecutorService newFixedThreadPool = Executors.newFixedThreadPool(2);
+newFixedThreadPool.execute(new ThreadForpools(index));
+
+//创建一个定长线程池，支持定时及周期性任务执行
+ScheduledExecutorService scheduledPool = Executors.newScheduledThreadPool(2);
+//延迟三秒执行
+scheduledPool.schedule(new ThreadForpools(index),3, TimeUnit.SECONDS);
+
+//创建一个单线程化的线程池，它只会用唯一的工作线程来执行任务，保证所有任务按照指定顺序(FIFO, LIFO, 优先级)执行
+ ExecutorService singleThreadExecutor = Executors.newSingleThreadExecutor();
+ singleThreadExecutor.execute(new ThreadForpools(index));
+```
+
+**线程池配置建议**
+
+1. CPU密集型任务，需要充分压榨CPU，参考值为`NCPU+1`;
+2. IO密集型任务，参考值为`2*NCPU`；
+
+---
+
+![](E:\GIT\distributed_techs\imgs\JUC内容概览.png)
+
+**多线程并发最佳实践**
+
+- 使用本地变量
+- 使用不可变类
+- 最小化锁的作用域范围(阿姆达尔定律)：$S=\frac{1}{1 - a + \frac{a}{n}}$，其中a为并行计算所占比例，n为并行计算的节点数目，S为加速比。任何在锁中的代码将不能被并发执行，若有5%的代码在锁中，那么根据阿姆达尔定律定律，应用就不可能提高超过20倍，因此锁中的代码越少越好。
+- 要使用线程池，而不是使用new thread；
+- 宁可使用同步也不要使用线程的wait和notify方法；
+- 使用BlockingQueue实现生产-消费模式；
+- 使用并发集合而不是加了锁的同步集合(Collections.synchronezedXXX)；
+- 使用Semaphore创建有界的访问，限制访问资源的线程数；
+- 宁可使用同步代码块而不使用同步的方法；
+- 避免使用静态变量！
+
+**Spring的线程安全**
 
 
 
 
 
+
+
+
+
+---
 
 ## 6. 高并发处理的思路及手段 
 

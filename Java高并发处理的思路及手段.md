@@ -494,13 +494,25 @@ public class StudyGuavaCache {
 >
 >GuavaCache毕竟是一款面向本地缓存的，轻量级的Cache，适合缓存少量数据。如果你想缓存上千万数据，可以为每个key设置不同的存活时间，并且高性能，那并不适合使用GuavaCache
 
-#### 2.3 分布式缓存之Memcache
+#### 2.3 本地缓存之[Caffeine Cache](https://github.com/ben-manes/caffeine)
+
+#### https://www.jb51.net/article/134242.htm
+
+http://fengfu.io/2018/03/26/Caffeine-%E6%AF%94Guava-Cache%E6%9B%B4%E5%A5%BD%E7%9A%84%E7%BC%93%E5%AD%98/
 
 
 
 
 
-#### 2.4 分布式缓存之Redis
+#### 
+
+#### 2.4 分布式缓存之Memcache
+
+
+
+
+
+#### 2.5 分布式缓存之Redis
 
 
 

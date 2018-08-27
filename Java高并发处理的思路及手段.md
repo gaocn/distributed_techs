@@ -660,6 +660,8 @@ Memcached的高可用解决方法就是[Consistent Hashing](http://dl.acm.org/ci
 
 #### 2.5 分布式缓存之Redis
 
+==参考：NOSQL 思维导图==
+
 Redis本质上是一个Key-Value类型的内存数据库，很像memcached，整个数据库统统加载在内存当中进行操作，定期通过异步操作把数据库数据flush到硬盘上进行保存。因为是纯内存操作，Redis的性能非常出色，每秒可以处理超过10万次读写操作，是已知性能最快的Key-Value DB。
 
 Redis的出色之处不仅仅是性能，Redis**最大的魅力是支持保存多种数据结构**，此外单个value的最大限制是1GB，不像 memcached只能保存1MB的数据，因此Redis可以用来实现很多有用的功能，比方说用它的List来做FIFO双向链表，实现一个轻量级的高性能消息队列服务，用他的Set可以做高性能的tag系统等。另外Redis也可以对存入的Key-Value设置expire时间，因此也可以被当作一 个功能加强版的memcached来用。**Redis主要缺点**是数据库容量受到物理内存的限制，不能用作海量数据的高性能读写，因此Redis适合的场景主要局限在较小数据量的高性能操作和运算上。

@@ -50,7 +50,7 @@
 
   | 事件           | 行为                                                         | 下一状态 |
   | -------------- | ------------------------------------------------------------ | -------- |
-  | Local Read     | 如果其它Cache没有这份数据，本Cache从内存中取数据，Cache line状态变成E；  如果其它Cache有这份数据，且状态为M，则将数据更新到内存，本Cache再从内存中取数据，2个Cache 的Cache line状态都变成S；  如果其它Cache有这份数据，且状态为S或者E，本Cache从内存中取数据，这些Cache 的Cache line状态都变成S | E/S      |
+  | Local Read | 如果其它Cache没有这份数据，本Cache从内存中取数据，Cache line状态变成E；  如果其它Cache有这份数据，且状态为M，则将数据更新到内存，本Cache再从内存中取数据，2个Cache 的Cache line状态都变成S；  如果其它Cache有这份数据，且状态为S或者E，本Cache从内存中取数据，这些Cache 的Cache line状态都变成S | E/S |
   | Local Write| 从内存中取数据，在Cache中修改，状态变成M；  如果其它Cache有这份数据，且状态为M，则要先将数据更新到内存；  如果其它Cache有这份数据，则其它Cache的Cache line状态变成I | M        |
   | Remote Read| 既然是Invalid，别的核的操作与它无关                          | I        |
   | Remote Write | 既然是Invalid，别的核的操作与它无关                          | I        |

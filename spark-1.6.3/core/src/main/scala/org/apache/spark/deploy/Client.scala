@@ -35,6 +35,8 @@ import org.apache.spark.util.{ThreadUtils, SparkExitCode, Utils}
  *
  * We currently don't support retry if submission fails. In HA mode, client will submit request to
  * all masters and see which one could handle it.
+  *
+  * ClientEndPoint本身代表应用程序本身！
  */
 private class ClientEndpoint(
     override val rpcEnv: RpcEnv,
@@ -229,8 +231,11 @@ object Client {
     val rpcEnv =
       RpcEnv.create("driverClient", Utils.localHostName(), 0, conf, new SecurityManager(conf))
 
+    //需要与Master进行通信，确定Master节点
     val masterEndpoints = driverArgs.masters.map(RpcAddress.fromSparkURL).
       map(rpcEnv.setupEndpointRef(Master.SYSTEM_NAME, _, Master.ENDPOINT_NAME))
+
+    //然后建立客户端
     rpcEnv.setupEndpoint("client", new ClientEndpoint(rpcEnv, driverArgs, masterEndpoints, conf))
 
     rpcEnv.awaitTermination()

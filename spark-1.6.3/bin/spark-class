@@ -16,16 +16,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+# 确保spark home存在
 if [ -z "${SPARK_HOME}" ]; then
   export SPARK_HOME="$(cd "`dirname "$0"`"/..; pwd)"
 fi
 
+# 加载spark环境变量
 . "${SPARK_HOME}"/bin/load-spark-env.sh
 
 # Find the java binary
 if [ -n "${JAVA_HOME}" ]; then
-  RUNNER="${JAVA_HOME}/bin/java"
+  RUNNER="${JAVA_HOME}/bin/java"  # RUNNER 通过java命令运行
 else
   if [ `command -v java` ]; then
     RUNNER="java"
@@ -35,7 +36,7 @@ else
   fi
 fi
 
-# Find assembly jar
+# Find assembly jar 程序运行时需要JAR依赖
 SPARK_ASSEMBLY_JAR=
 if [ -f "${SPARK_HOME}/RELEASE" ]; then
   ASSEMBLY_DIR="${SPARK_HOME}/lib"
@@ -50,6 +51,7 @@ if [ "$num_jars" -eq "0" -a -z "$SPARK_ASSEMBLY_JAR" -a "$SPARK_PREPEND_CLASSES"
   echo "You need to build Spark before running this program." 1>&2
   exit 1
 fi
+# 若存在超过两个以上的spark-assembly*程序，则不运行！
 if [ -d "$ASSEMBLY_DIR" ]; then
   ASSEMBLY_JARS="$(ls -1 "$ASSEMBLY_DIR" | grep "^spark-assembly.*hadoop.*\.jar$" || true)"
   if [ "$num_jars" -gt "1" ]; then
@@ -81,6 +83,7 @@ fi
 # characters that would be otherwise interpreted by the shell. Read that in a while loop, populating
 # an array that will be used to exec the final command.
 CMD=()
+# scala本身的运行时依赖java的
 while IFS= read -d '' -r ARG; do
   CMD+=("$ARG")
 done < <("$RUNNER" -cp "$LAUNCH_CLASSPATH" org.apache.spark.launcher.Main "$@")

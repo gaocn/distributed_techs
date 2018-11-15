@@ -49,7 +49,7 @@ import org.apache.spark.sql.SQLContext
 import org.apache.spark.util.Utils
 
 /** The Scala interactive shell.  It provides a read-eval-print loop
- *  around the Interpreter class.
+ *  around the Interpreter class[例如: SparkIMain.scala].
  *  After instantiation, clients should call the main() method.
  *
  *  If no in0 is specified, then input will come from the console, and
@@ -213,7 +213,7 @@ class SparkILoop(
     val totalClassPath = addedJars.foldLeft(
       settings.classpath.value)((l, r) => ClassPath.join(l, r))
     this.settings.classpath.value = totalClassPath
-
+    //实例化SparkIMain,SparkILoopInterpreter继承实例化SparkIMain
     intp = new SparkILoopInterpreter
   }
 
@@ -942,6 +942,10 @@ class SparkILoop(
           m.staticClass(classTag[T].runtimeClass.getName).toTypeConstructor.asInstanceOf[U # Type]
       })
 
+  /**
+    * 调用process后才展开了后续的工作
+    * 该处理过程涉及：在同一个进程中，动态执行多条Spark程序
+    */
   private def process(settings: Settings): Boolean = savingContextLoader {
     if (getMaster() == "yarn-client") System.setProperty("SPARK_YARN_MODE", "true")
 
@@ -1047,9 +1051,13 @@ class SparkILoop(
     master
   }
 
-  /** process command-line arguments and do as they request */
+  /** process command-line arguments and do as they request
+    *
+    * REPL中的代码是边编译边运行
+    * */
   def process(args: Array[String]): Boolean = {
     val command = new SparkCommandLine(args.toList, msg => echo(msg))
+    /* TAB键提示 */
     def neededHelp(): String =
       (if (command.settings.help.value) command.usageMsg + "\n" else "") +
       (if (command.settings.Xhelp.value) command.xusageMsg + "\n" else "")

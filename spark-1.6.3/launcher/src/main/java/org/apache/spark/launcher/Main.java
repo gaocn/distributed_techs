@@ -26,7 +26,7 @@ import java.util.Map;
 import static org.apache.spark.launcher.CommandBuilderUtils.*;
 
 /**
- * Command line interface for the Spark launcher. Used internally by Spark scripts.
+ * Command line interface for the Spark lauline interface for the Spark launcher. Used internally by Spark scripts.
  */
 class Main {
 

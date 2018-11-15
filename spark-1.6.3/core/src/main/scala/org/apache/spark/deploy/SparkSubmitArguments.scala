@@ -71,6 +71,7 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   var keytab: String = null
 
   // Standalone cluster mode only
+  /* by gww 在集群模式下，若supervise为true表示Driver挂掉后可以自动重启 */
   var supervise: Boolean = false
   var driverCores: String = null
   var submissionToKill: String = null

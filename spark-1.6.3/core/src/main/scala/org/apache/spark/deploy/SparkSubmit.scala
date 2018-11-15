@@ -111,6 +111,7 @@ object SparkSubmit {
   // scalastyle:on println
 
   def main(args: Array[String]): Unit = {
+    // spark-sbumit提交的参数通过SparkSubmitArguments封装
     val appArgs = new SparkSubmitArguments(args)
     if (appArgs.verbose) {
       // scalastyle:off println
@@ -118,6 +119,7 @@ object SparkSubmit {
       // scalastyle:on println
     }
     appArgs.action match {
+      // 默认为SUBMIT
       case SparkSubmitAction.SUBMIT => submit(appArgs)
       case SparkSubmitAction.KILL => kill(appArgs)
       case SparkSubmitAction.REQUEST_STATUS => requestStatus(appArgs)
@@ -151,6 +153,7 @@ object SparkSubmit {
    * main class.
    */
   private def submit(args: SparkSubmitArguments): Unit = {
+    //比较重要的是childMainClass，这里的类适用于启动Client！！
     val (childArgs, childClasspath, sysProps, childMainClass) = prepareSubmitEnvironment(args)
 
     def doRunMain(): Unit = {
@@ -160,6 +163,7 @@ object SparkSubmit {
         try {
           proxyUser.doAs(new PrivilegedExceptionAction[Unit]() {
             override def run(): Unit = {
+              //开启一条线程, 运行JVM进程
               runMain(childArgs, childClasspath, sysProps, childMainClass, args.verbose)
             }
           })
@@ -728,6 +732,7 @@ object SparkSubmit {
     }
 
     try {
+      /** 采用反射调用 org.apache.spark.repl.Main中的满方法可以开启spark-shell应用程序 */
       mainMethod.invoke(null, childArgs.toArray)
     } catch {
       case t: Throwable =>

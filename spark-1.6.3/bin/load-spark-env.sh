@@ -31,9 +31,9 @@ if [ -z "$SPARK_ENV_LOADED" ]; then
 
   # Returns the parent of the directory this script lives in.
   parent_dir="${SPARK_HOME}"
-
+  # 配置目录
   user_conf_dir="${SPARK_CONF_DIR:-"$parent_dir"/conf}"
-
+  # 若存在spark-env.sh存在着加载spark环境配置!
   if [ -f "${user_conf_dir}/spark-env.sh" ]; then
     # Promote all variable declarations to environment (exported) variables
     set -a

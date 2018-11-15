@@ -41,7 +41,7 @@ object DriverWrapper {
         val rpcEnv = RpcEnv.create("Driver",
           Utils.localHostName(), 0, conf, new SecurityManager(conf))
         rpcEnv.setupEndpoint("workerWatcher", new WorkerWatcher(rpcEnv, workerUrl))
-
+        //框架的类加载器
         val currentLoader = Thread.currentThread.getContextClassLoader
         val userJarUrl = new File(userJar).toURI().toURL()
         val loader =
@@ -50,6 +50,7 @@ object DriverWrapper {
           } else {
             new MutableURLClassLoader(Array(userJarUrl), currentLoader)
           }
+        //为什么不直接使用类加载器而通过setContextClassLoader设置， 框架的类加载器是不能加载用户自定义类的，因此需要通过setContextClassLoader借助于框架的累加载器！累加载器是有层级的！
         Thread.currentThread.setContextClassLoader(loader)
 
         // Delegate to supplied main class

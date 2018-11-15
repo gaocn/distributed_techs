@@ -20,12 +20,13 @@
 #
 # Shell script for starting the Spark Shell REPL
 
+# 一般情况下不会使用cygwin
 cygwin=false
 case "`uname`" in
   CYGWIN*) cygwin=true;;
 esac
 
-# Enter posix mode for bash
+# Enter posix mode for bash BASH有很多标准，这里使用POSIX标准！
 set -o posix
 
 if [ -z "${SPARK_HOME}" ]; then

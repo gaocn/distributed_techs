@@ -36,6 +36,7 @@ class MasterWebUI(
   with UIRoot {
 
   val masterEndpointRef = master.self
+  //通过WEB界面杀掉WEB进程
   val killEnabled = master.conf.getBoolean("spark.ui.killEnabled", true)
 
   val masterPage = customMasterPage.getOrElse(new MasterPage(this))

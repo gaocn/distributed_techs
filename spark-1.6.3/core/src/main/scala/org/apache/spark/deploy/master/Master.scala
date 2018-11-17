@@ -141,21 +141,25 @@ private[deploy] class Master(
   override def onStart(): Unit = {
     logInfo("Starting Spark master at " + masterUrl)
     logInfo(s"Running Spark version ${org.apache.spark.SPARK_VERSION}")
+    //基于jetty创建web服务器，使用scala与jsp结合创建web服务
+    //通过了解该代码可以开发界面控制spark的一切，通过界面控制，在jetty服务器解析执行操作然后调用spark的相应命令去控制spark进程，即使用jetty操作Spark服务器
     webUi = new MasterWebUI(this, webUiPort)
     webUi.bind()
     masterWebUiUrl = "http://" + masterPublicAddress + ":" + webUi.boundPort
+    //worker注册过来之后，在特定的超时时间内有没有发心跳信息过来
     checkForWorkerTimeOutTask = forwardMessageThread.scheduleAtFixedRate(new Runnable {
       override def run(): Unit = Utils.tryLogNonFatalError {
         self.send(CheckForWorkerTimeOut)
       }
     }, 0, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-
+    //启动Rest Server，了解Rest Server！！
     if (restServerEnabled) {
       val port = conf.getInt("spark.master.rest.port", 6066)
       restServer = Some(new StandaloneRestServer(address.host, port, conf, self, masterUrl))
     }
     restServerBoundPort = restServer.map(_.start())
 
+    //主节点统计信息
     masterMetricsSystem.registerSource(masterSource)
     masterMetricsSystem.start()
     applicationMetricsSystem.start()
@@ -163,8 +167,9 @@ private[deploy] class Master(
     // started.
     masterMetricsSystem.getServletHandlers.foreach(webUi.attachHandler)
     applicationMetricsSystem.getServletHandlers.foreach(webUi.attachHandler)
-
+    // 默认Master使用的是Java序列化器，以后会使用Kyro
     val serializer = new JavaSerializer(conf)
+    //集群状态保存模式
     val (persistenceEngine_, leaderElectionAgent_) = RECOVERY_MODE match {
       case "ZOOKEEPER" =>
         logInfo("Persisting recovery state to ZooKeeper")
@@ -207,17 +212,18 @@ private[deploy] class Master(
     persistenceEngine.close()
     leaderElectionAgent.stop()
   }
-
+  //若自己被选举为Leader，会给自己发送一个消息electedLeader
   override def electedLeader() {
     self.send(ElectedLeader)
   }
-
+  //leader角色被剥夺了也要发送消息给master自己
   override def revokedLeadership() {
     self.send(RevokedLeadership)
   }
-
+  //接收但不回复消息
   override def receive: PartialFunction[Any, Unit] = {
     case ElectedLeader => {
+      //被选为Leader会，首先是回复集群状态，在恢复完成后，leader为ALIVE状态
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
       state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
         RecoveryState.ALIVE
@@ -241,7 +247,7 @@ private[deploy] class Master(
       logError("Leadership has been revoked -- master shutting down.")
       System.exit(0)
     }
-
+    //客户端注册程序
     case RegisterApplication(description, driver) => {
       // TODO Prevent repeated registrations from some driver
       if (state == RecoveryState.STANDBY) {
@@ -256,7 +262,7 @@ private[deploy] class Master(
         schedule()
       }
     }
-
+    //Executor状态变化
     case ExecutorStateChanged(appId, execId, state, message, exitStatus) => {
       val execOption = idToApp.get(appId).flatMap(app => app.executors.get(execId))
       execOption match {
@@ -304,7 +310,7 @@ private[deploy] class Master(
           logWarning(s"Got status update for unknown executor $appId/$execId")
       }
     }
-
+    //Driver状态变化
     case DriverStateChanged(driverId, state, exception) => {
       state match {
         case DriverState.ERROR | DriverState.FINISHED | DriverState.KILLED | DriverState.FAILED =>
@@ -313,7 +319,7 @@ private[deploy] class Master(
           throw new Exception(s"Received unexpected state update for driver $driverId: $state")
       }
     }
-
+    //worker发送的心跳信息，仅包括：worker id和worker endpoint
     case Heartbeat(workerId, worker) => {
       idToWorker.get(workerId) match {
         case Some(workerInfo) =>
@@ -329,7 +335,7 @@ private[deploy] class Master(
           }
       }
     }
-
+    //集群Master状态发送改变
     case MasterChangeAcknowledged(appId) => {
       idToApp.get(appId) match {
         case Some(app) =>
@@ -382,8 +388,9 @@ private[deploy] class Master(
       // An asyncRebuildSparkUI has completed, so need to attach to master webUi
       Option(appIdToUI.get(appId)).foreach { ui => webUi.attachSparkUI(ui) }
   }
-
+  //接收消息并且回复消息
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    //worker注册时，必须给worker确定信息，worker才能正常工作
     case RegisterWorker(
         id, workerHost, workerPort, workerRef, cores, memory, workerUiPort, publicAddress) => {
       logInfo("Registering worker %s:%d with %d cores, %s RAM".format(
@@ -397,8 +404,9 @@ private[deploy] class Master(
           workerRef, workerUiPort, publicAddress)
         if (registerWorker(worker)) {
           persistenceEngine.addWorker(worker)
+          //RPCCallContext
           context.reply(RegisteredWorker(self, masterWebUiUrl))
-          schedule()
+          schedule() //由于加入新的资源，重新进行资源调度
         } else {
           val workerAddress = worker.endpoint.address
           logWarning("Worker registration failed. Attempted to re-register worker at same " +
@@ -408,7 +416,7 @@ private[deploy] class Master(
         }
       }
     }
-
+    //driver可能在集群中运行
     case RequestSubmitDriver(description) => {
       if (state != RecoveryState.ALIVE) {
         val msg = s"${Utils.BACKUP_STANDALONE_MASTER_PREFIX}: $state. " +
@@ -429,7 +437,9 @@ private[deploy] class Master(
           s"Driver successfully submitted as ${driver.id}"))
       }
     }
-
+    /**
+      * jetty服务器可以与Master通信，因此也能发送这些消息
+      */
     case RequestKillDriver(driverId) => {
       if (state != RecoveryState.ALIVE) {
         val msg = s"${Utils.BACKUP_STANDALONE_MASTER_PREFIX}: $state. " +
@@ -488,6 +498,8 @@ private[deploy] class Master(
     }
 
     case BoundPortsRequest => {
+      //返回服务监听端口，web端口以及
+      //restServerBoundPort实在onStart时被创建，
       context.reply(BoundPortsResponse(address.port, webUi.boundPort, restServerBoundPort))
     }
 
@@ -569,6 +581,7 @@ private[deploy] class Master(
   }
 
   /**
+    * 资源调度，Master管理和控制整个集群的资源
    * Schedule executors to be launched on the workers.
    * Returns an array containing number of cores assigned to each worker.
    *
@@ -1124,6 +1137,7 @@ private[deploy] object Master extends Logging {
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, host, port, conf, securityMgr)
     val masterEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME,
       new Master(rpcEnv, rpcEnv.address, webUiPort, securityMgr, conf))
+    // 发送消息，用于确保MasterEndpoint是正常启动起来了，发送消息给自己！
     val portsResponse = masterEndpoint.askWithRetry[BoundPortsResponse](BoundPortsRequest)
     (rpcEnv, portsResponse.webUIPort, portsResponse.restPort)
   }

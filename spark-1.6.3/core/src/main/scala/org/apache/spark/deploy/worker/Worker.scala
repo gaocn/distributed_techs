@@ -114,8 +114,12 @@ private[deploy] class Worker(
     }
 
   var workDir: File = null
+  //当前Worker接收Master指令后，会开启多个ExecutorBackend进程，ExecutorRunner是一个句柄
+  //负责管理具体启动的ExecutorBackend进程，这里使用的代理模式
   val finishedExecutors = new LinkedHashMap[String, ExecutorRunner]
+  // 当前worker机器上有哪些Driver进程，Driver所在的进程和Executor所在进程从进程管理阶段是没有区别的
   val drivers = new HashMap[String, DriverRunner]
+  //保存正在运行的ExecutorBackend进程
   val executors = new HashMap[String, ExecutorRunner]
   val finishedDrivers = new LinkedHashMap[String, DriverRunner]
   val appDirectories = new HashMap[String, Seq[String]]
@@ -175,16 +179,18 @@ private[deploy] class Worker(
     }
   }
 
-  override def onStart() {
+  override def onStart() { //消息通信体再启动的时候会自动调用onoStart
     assert(!registered)
     logInfo("Starting Spark worker %s:%d with %d cores, %s RAM".format(
       host, port, cores, Utils.megabytesToString(memory)))
     logInfo(s"Running Spark version ${org.apache.spark.SPARK_VERSION}")
     logInfo("Spark home: " + sparkHome)
     createWorkDir()
+    //shuffleServie本身也是Master/Slave结构的
     shuffleService.startIfEnabled()
     webUi = new WorkerWebUI(this, workDir, webUiPort)
     webUi.bind()
+    //向Master注册
     registerWithMaster()
 
     metricsSystem.registerSource(workerSource)
@@ -259,9 +265,11 @@ private[deploy] class Worker(
             // masterRef cannot be used and we need to recreate it again. Note: we must not set
             // master to None due to the above comments.
             if (registerMasterFutures != null) {
+              //已经注册了一个master，其他的就取消
               registerMasterFutures.foreach(_.cancel(true))
             }
             val masterAddress = masterRef.address
+            //为了更好的响应、充分利用并发这里使用向Master线程注册
             registerMasterFutures = Array(registerMasterThreadPool.submit(new Runnable {
               override def run(): Unit = {
                 try {
@@ -325,6 +333,7 @@ private[deploy] class Worker(
         registrationRetryTimer = Some(forwordMessageScheduler.scheduleAtFixedRate(
           new Runnable {
             override def run(): Unit = Utils.tryLogNonFatalError {
+              //ReregisterWithMaster给自己发送消息
               Option(self).foreach(_.send(ReregisterWithMaster))
             }
           },
@@ -338,6 +347,7 @@ private[deploy] class Worker(
   }
 
   private def registerWithMaster(masterEndpoint: RpcEndpointRef): Unit = {
+    //发送消息，并指定返回的消息类型：RegisterWorkerResponse
     masterEndpoint.ask[RegisterWorkerResponse](RegisterWorker(
       workerId, host, port, self, cores, memory, webUi.boundPort, publicAddress))
       .onComplete {
@@ -681,13 +691,18 @@ private[deploy] class Worker(
   }
 }
 
+/**
+  * Worker和Master本质上没有区别，都是管理CPU和内存资源，只不过Master是管理集群中的资源，
+  * 而Worker是管理单台服务器上的资源。所以两个的代码比较相似。
+  * 容、易：包容变化，这也是container的思想
+  */
 private[deploy] object Worker extends Logging {
-  val SYSTEM_NAME = "sparkWorker"
-  val ENDPOINT_NAME = "Worker"
+  val SYSTEM_NAME = "sparkWorker" //集群中的系统名称
+  val ENDPOINT_NAME = "Worker"  //消息通信系统中注册的名称
 
   def main(argStrings: Array[String]) {
     SignalLogger.register(log)
-    val conf = new SparkConf
+    val conf = new SparkConf //默认会从spark-defaults.conf中读取配置
     val args = new WorkerArguments(argStrings, conf)
     val rpcEnv = startRpcEnvAndEndpoint(args.host, args.port, args.webUiPort, args.cores,
       args.memory, args.masters, args.workDir, conf = conf)
@@ -709,7 +724,9 @@ private[deploy] object Worker extends Logging {
     val systemName = SYSTEM_NAME + workerNumber.map(_.toString).getOrElse("")
     val securityMgr = new SecurityManager(conf)
     val rpcEnv = RpcEnv.create(systemName, host, port, conf, securityMgr)
+    //RPC：分布式消息通信系统，采用Master/Slave架构
     val masterAddresses = masterUrls.map(RpcAddress.fromSparkURL(_))
+    //所有实体都需要注册给一个控制中心，其中的一个实体可以通过控制中心找到其他所有的实体
     rpcEnv.setupEndpoint(ENDPOINT_NAME, new Worker(rpcEnv, webUiPort, cores, memory,
       masterAddresses, systemName, ENDPOINT_NAME, workDir, conf, securityMgr))
     rpcEnv

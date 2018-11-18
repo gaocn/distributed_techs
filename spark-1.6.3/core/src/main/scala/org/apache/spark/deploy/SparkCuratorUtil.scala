@@ -25,6 +25,11 @@ import org.apache.zookeeper.KeeperException
 
 import org.apache.spark.{Logging, SparkConf}
 
+/**
+  * 给我们使用ZK带来启发，Spark使用了封装性的框架，为什么？
+  * 1、简化配置、使用。
+  * 2、为了以后版本升级的灵活性。
+  */
 private[spark] object SparkCuratorUtil extends Logging {
 
   private val ZK_CONNECTION_TIMEOUT_MILLIS = 15000

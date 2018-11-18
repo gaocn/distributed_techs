@@ -29,6 +29,7 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
 
   private var zk: CuratorFramework = _
   private var leaderLatch: LeaderLatch = _
+  //默认情况下不是Leader
   private var status = LeadershipStatus.NOT_LEADER
 
   start()
@@ -36,8 +37,10 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
   private def start() {
     logInfo("Starting ZooKeeper LeaderElection agent")
     zk = SparkCuratorUtil.newClient(conf)
+    //负责参选
     leaderLatch = new LeaderLatch(zk, WORKING_DIR)
     leaderLatch.addListener(this)
+    //开始进行选举
     leaderLatch.start()
   }
 
@@ -73,6 +76,28 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
   private def updateLeadershipStatus(isLeader: Boolean) {
     if (isLeader && status == LeadershipStatus.NOT_LEADER) {
       status = LeadershipStatus.LEADER
+      /**
+      LeaderElectable的子类为Master，当被选举为Leader后，会调用electedLeader（回调），此时Master会利用该方法发送ElectedLeader消息
+      Master接收ElectedLeader消息后，从ZK中读取apps、drivers、workers信息准备进行恢复
+      case ElectedLeader => {
+      //被选为Leader会，首先是恢复集群状态，在恢复完成后，leader为ALIVE状态
+      val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
+      state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
+        RecoveryState.ALIVE
+      } else {
+        RecoveryState.RECOVERING
+      }
+      logInfo("I have been elected leader! New state: " + state)
+      if (state == RecoveryState.RECOVERING) {
+        beginRecovery(storedApps, storedDrivers, storedWorkers)
+        recoveryCompletionTask = forwardMessageThread.schedule(new Runnable {
+          override def run(): Unit = Utils.tryLogNonFatalError {
+            self.send(CompleteRecovery)
+          }
+        }, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+      }
+    }
+        */
       masterInstance.electedLeader()
     } else if (!isLeader && status == LeadershipStatus.LEADER) {
       status = LeadershipStatus.NOT_LEADER

@@ -35,6 +35,7 @@ private[master] class ZooKeeperPersistenceEngine(conf: SparkConf, val serializer
   with Logging {
 
   private val WORKING_DIR = conf.get("spark.deploy.zookeeper.dir", "/spark") + "/master_status"
+  //创建线程安全的ZK实例
   private val zk: CuratorFramework = SparkCuratorUtil.newClient(conf)
 
   SparkCuratorUtil.mkdir(zk, WORKING_DIR)

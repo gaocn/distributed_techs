@@ -210,7 +210,8 @@ private[deploy] class Worker(
   }
 
   private def tryRegisterAllMasters(): Array[JFuture[_]] = {
-    masterRpcAddresses.map { masterAddress =>
+    //假设有三台Master做高可用，这会进行三次
+    masterRpcAddresses.map { masterAddress =>  //这个是重构后的代码，以前的代码是直接注册
       registerMasterThreadPool.submit(new Runnable {
         override def run(): Unit = {
           try {

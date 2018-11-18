@@ -169,7 +169,7 @@ private[deploy] class Master(
     applicationMetricsSystem.getServletHandlers.foreach(webUi.attachHandler)
     // 默认Master使用的是Java序列化器，以后会使用Kyro
     val serializer = new JavaSerializer(conf)
-    //集群状态保存模式
+    //集群状态保存模式,(持久化引擎，Leader选举代理)
     val (persistenceEngine_, leaderElectionAgent_) = RECOVERY_MODE match {
       case "ZOOKEEPER" =>
         logInfo("Persisting recovery state to ZooKeeper")
@@ -223,7 +223,7 @@ private[deploy] class Master(
   //接收但不回复消息
   override def receive: PartialFunction[Any, Unit] = {
     case ElectedLeader => {
-      //被选为Leader会，首先是回复集群状态，在恢复完成后，leader为ALIVE状态
+      //被选为Leader会，首先是集群恢复状态，在恢复完成后，leader为ALIVE状态
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
       state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
         RecoveryState.ALIVE
@@ -245,6 +245,7 @@ private[deploy] class Master(
 
     case RevokedLeadership => {
       logError("Leadership has been revoked -- master shutting down.")
+      //在HA的时候，什么时候LeaderShip被剥夺了，是在机器挂了或网络断的时候，因此这里直接退出，也来不及干其他事情，所以直接退出。
       System.exit(0)
     }
     //客户端注册程序

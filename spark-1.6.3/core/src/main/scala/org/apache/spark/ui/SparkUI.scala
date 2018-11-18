@@ -32,12 +32,19 @@ import org.apache.spark.ui.storage.{StorageListener, StorageTab}
 import org.apache.spark.ui.scope.RDDOperationGraphListener
 
 /**
+ * 弱耦合消息机制
+ * 监控Spark集群，采用事件监听（基于ListenerBus），事件就是异步调用。即集群发生具体事件后会发送消息给Driver
+ * 在Driver中会接收到该消息或事件，然后处理。
+ * 基于事件的监控，只需要发送消息即可而不用关心具体UI的渲染过程，实现不同模块的解耦合。
+ * listenerBus从理论上说是属于SparkContext的， 在SparkContext中被创建，存在于SparkContext和SparkEnv对象中
+ *
  * Top level user interface for a Spark application.
  */
 private[spark] class SparkUI private (
     val sc: Option[SparkContext],
     val conf: SparkConf,
     securityManager: SecurityManager,
+    //SparkUI可以通过监听器（ListenerBus）捕获Spark集群的动态实时展现到界面上
     val environmentListener: EnvironmentListener,
     val storageStatusListener: StorageStatusListener,
     val executorsListener: ExecutorsListener,
@@ -125,7 +132,7 @@ private[spark] abstract class SparkUITab(parent: SparkUI, prefix: String)
 }
 
 private[spark] object SparkUI {
-  val DEFAULT_PORT = 4040
+  val DEFAULT_PORT = 4040 // 端口被占用时会自增1
   val STATIC_RESOURCE_DIR = "org/apache/spark/ui/static"
   val DEFAULT_POOL_NAME = "default"
   val DEFAULT_RETAINED_STAGES = 1000
@@ -185,7 +192,7 @@ private[spark] object SparkUI {
     val executorsListener = new ExecutorsListener(storageStatusListener)
     val storageListener = new StorageListener(storageStatusListener)
     val operationGraphListener = new RDDOperationGraphListener(conf)
-
+    //监听器模式 listenerBus: SparkListenerBus
     listenerBus.addListener(environmentListener)
     listenerBus.addListener(storageStatusListener)
     listenerBus.addListener(executorsListener)

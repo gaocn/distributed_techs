@@ -309,6 +309,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
 
   // Keeps track of all persisted RDDs
   private[spark] val persistentRdds = new TimeStampedWeakValueHashMap[Int, RDD[_]]
+  //用于周期性的清理过期数据，例如：old files，hash entries
   private[spark] def metadataCleaner: MetadataCleaner = _metadataCleaner
   private[spark] def jobProgressListener: JobProgressListener = _jobProgressListener
 

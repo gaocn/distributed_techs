@@ -167,6 +167,8 @@ class SparkConf(loadDefaults: Boolean) extends Cloneable with Logging {
   /**
    * Use Kryo serialization and register the given set of Avro schemas so that the generic
    * record serializer can decrease network IO
+   * Avro是一个数据序列化系统，设计用于支持大批量数据交换的应用
+   * http://blog.cloudera.com/blog/2009/11/avro-a-new-format-for-data-interchange/
    */
   def registerAvroSchemas(schemas: Schema*): SparkConf = {
     for (schema <- schemas) {

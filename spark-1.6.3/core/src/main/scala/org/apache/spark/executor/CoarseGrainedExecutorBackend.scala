@@ -174,6 +174,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       fetcher.shutdown()
 
       // Create SparkEnv using properties we fetched from the driver.
+      //SparkEnv的相关参数需要从Driver中获取保证SparkEnv的配置一致
       val driverConf = new SparkConf()
       for ((key, value) <- props) {
         // this is required for SSL in standalone mode
@@ -188,7 +189,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
           driverConf.get("spark.yarn.credentials.file"))
         SparkHadoopUtil.get.startExecutorDelegationTokenRenewer(driverConf)
       }
-
+      //利用SparkEnv的静态方法创建ExecutorBackend中的SparkEnv
       val env = SparkEnv.createExecutorEnv(
         driverConf, executorId, hostname, port, cores, isLocal = false)
 
@@ -198,11 +199,16 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       val sparkHostPort = env.conf.getOption("spark.executor.port").map { port =>
           hostname + ":" + port
         }.orNull
+      //创建消息循环体
       env.rpcEnv.setupEndpoint("Executor", new CoarseGrainedExecutorBackend(
         env.rpcEnv, driverUrl, executorId, sparkHostPort, cores, userClassPath, env))
       workerUrl.foreach { url =>
         env.rpcEnv.setupEndpoint("WorkerWatcher", new WorkerWatcher(env.rpcEnv, url))
       }
+      //由此可以知道 整个Backend的启动及结束都是被SparkEnv对象实例所管理的
+      //SparkEnv不是Master/Slave结构，因为M/S结构一般都会有状态变化，而SparkEnv创建后不会改变！
+      //Driver和Executor上都有SparkEnv但不是M/S结构，它们都需要读取系统的配置，在配置完成后对象实例不变
+      //虽然SparkEnv分为两种类型，但本质上是一样的,所以在SparkEnv源码注释中说是全局唯一，这里的全局唯一是隐性的全局唯一
       env.rpcEnv.awaitTermination()
       SparkHadoopUtil.get.stopExecutorDelegationTokenRenewer()
     }

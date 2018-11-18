@@ -43,30 +43,52 @@ import org.apache.spark.storage._
 import org.apache.spark.util.{AkkaUtils, RpcUtils, Utils}
 
 /**
- * :: DeveloperApi ::
+ * :: DeveloperApi :: 用于保存运行时Spark集群实例的所有的环境信息
  * Holds all the runtime environment objects for a running Spark instance (either master or worker),
- * including the serializer, Akka actor system, block manager, map output tracker, etc. Currently
+ * including the serializer, “Akka actor system”, block manager, map output tracker, etc. Currently
  * Spark code finds the SparkEnv through a global variable, so all the threads can access the same
  * SparkEnv. It can be accessed by SparkEnv.get (e.g. after creating a SparkContext).
+ *
+ * SparkEnv不是Master/Slave结构，因为M/S结构一般都会有状态变化，而SparkEnv创建后不会改变！
+ * Driver和Executor上虽然都有SparkEnv但不是M/S结构，它们都需要读取系统的配置，在配置完成后对象实例不变。
+ * 虽然SparkEnv分为两种类型，但本质上是一样的,所以在SparkEnv源码注释中说是全局唯一，这里的全局唯一是隐性的全局唯一。
  *
  * NOTE: This is not intended for external use. This is exposed for Shark and may be made private
  *       in a future release.
  */
 @DeveloperApi
-class SparkEnv (
+class SparkEnv ( //SparkEnv包含了整个Spark运行实例的上下文信息，SparkConf的参数只是用于其部分的状态
+               //SparkConf相当于方向盘、速度等，SparkContext相当于发动机引擎，SparkEnv相当于车上的整体环境上下文
     val executorId: String,
     private[spark] val rpcEnv: RpcEnv,
+    //java线程的本质：基于全局变量加锁机制下的多线程操作，而Scala看到其中的死锁问题，提出了Actor基于Share-Nothing的消息通信多线程，彼此互不影响。
     _actorSystem: ActorSystem, // TODO Remove actorSystem
     val serializer: Serializer,
     val closureSerializer: Serializer,
+    //用于缓存具体RDD的某一计算结果
     val cacheManager: CacheManager,
+
+    //跟踪Mapper阶段的输出,Master/Slave结构，是一个链条可以不断有Mapper-Reducer-...-，
+    //MapOutputTrackerSlave向MapOutputTrackerMaster汇报输出数据的位置，Reducer向MapOutputTrackerMaster请求获取输出位置
     val mapOutputTracker: MapOutputTracker,
+
+    //shuffle输出目前默认放在磁盘上，也可以配置为off-heap，支持SortShuffleManager,HashShuffleManager
+    //可插拔的方式，具体是通过反射方式调用哪一种配置的ShuffleManager，可以在参见362行shuffleManager的创建
     val shuffleManager: ShuffleManager,
+
+    //广播管理器用于实现配置信息等在Executor内部共享，具体会采用BlockManager实现
     val broadcastManager: BroadcastManager,
+
+    //默认底层采用NettyBlockTransferService的方式,Netty采用异步事件驱动的网络通信应用框架，创建代码参见375行
     val blockTransferService: BlockTransferService,
+
+    //同样是Master/Slave结构，负责管理所有数据无论在内存、磁盘还是Off-Heap上，BlockManagerMaster是在Driver上，BlockManagerSlave是在具体每台机器上的ExecutorBackend上。在Master上会创建BlockManagerMasterPoint用于管理所有blocks，在Slave上会创建BlockManagerSlaveEndpoint用于执行具体的block读写删除等操作。
     val blockManager: BlockManager,
+
+    //对权限和账号进行配置，例如使用YARN作为集群资源管理器时需要生成SecurityKey或证书等来登录(YARN在多用户管理时)，这样在具体系统工作时，通过证书或Key进行认证
     val securityManager: SecurityManager,
     val sparkFilesDir: String,
+    //测量系统用于统计系统的信息
     val metricsSystem: MetricsSystem,
     val memoryManager: MemoryManager,
     val outputCommitCoordinator: OutputCommitCoordinator,
@@ -198,7 +220,7 @@ object SparkEnv extends Logging {
       isDriver = true,
       isLocal = isLocal,
       numUsableCores = numCores,
-      listenerBus = listenerBus,
+      listenerBus = listenerBus, //消息总线，监控事件
       mockOutputCommitCoordinator = mockOutputCommitCoordinator
     )
   }
@@ -232,7 +254,7 @@ object SparkEnv extends Logging {
    */
   private def create(
       conf: SparkConf,
-      executorId: String,
+      executorId: String,   //Driver也是一个Executor
       hostname: String,
       port: Int,
       isDriver: Boolean,
@@ -249,6 +271,7 @@ object SparkEnv extends Logging {
     val securityManager = new SecurityManager(conf)
 
     // Create the ActorSystem for Akka and get the port it binds to.
+    //实际上在底层都是使用Netty通信
     val actorSystemName = if (isDriver) driverActorSystemName else executorActorSystemName
     val rpcEnv = RpcEnv.create(actorSystemName, hostname, port, conf, securityManager,
       clientMode = !isDriver)

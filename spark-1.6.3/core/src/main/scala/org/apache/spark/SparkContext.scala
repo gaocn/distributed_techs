@@ -66,15 +66,28 @@ import org.apache.spark.ui.{SparkUI, ConsoleProgressBar}
 import org.apache.spark.ui.jobs.JobProgressListener
 import org.apache.spark.util._
 
-/**
- * Main entry point for Spark functionality. A SparkContext represents the connection to a Spark
- * cluster, and can be used to create RDDs, accumulators and broadcast variables on that cluster.
+/***
+ * SparkContext、SparkEnv是Driver的核心，其中SparkContext是引擎负责指挥整个集群工作，SparkEnv相当于各种
+ * 显性或隐性的操作，内部有SparkConf，SparkConf相当于方向盘，例如：开车速度，停车等这些操作具体怎么做需要依赖
+ * SparkEnv。运行在什么集群上就相当于跑在什么公路上，而集群中的CPU、内存资源相当于在什么公路上跑（小路，柏油
+ * 路，高速公路等）。
  *
+ * Main entry point for Spark functionality. A SparkContext represents the connection to a Spark
+ * cluster(同时也驱动整个集群工作), and can be used to create RDDs, accumulators and broadcast
+ * on that cluster.
+ * 即整个Spark程序的运行分为两部分：Driver（SparkContext）、具体业务逻辑。
+ *
+ * 即同时只能有一个领导指挥任务，但以后同一个程序会支持多个SparkContext，同一个程序有多个SparkContext实例，则一个
+ *  程序中不同的部分输入的环境、配置可以不一样，这就可以让程序运行更多的功能。
  * Only one SparkContext may be active per JVM.  You must `stop()` the active SparkContext before
  * creating a new one.  This limitation may eventually be removed; see SPARK-2243 for more details.
  *
  * @param config a Spark Config object describing the application configuration. Any settings in
  *   this config overrides the default configs as well as system properties.
+ *  配置主要来自：spark-env.conf，spark-defaults.conf，log4j.properties等配置文件以及应用程序中添加的配置
+ *
+ * SparkContext的第一步：创建SparkEnv，没有SparkEnv就不能做shuffle，无法读取数据等具体操作。
+ *
  */
 class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationClient {
 
@@ -2200,6 +2213,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
 /**
  * The SparkContext object contains a number of implicit conversions and parameters for use with
  * various Spark features.
+ *
  */
 object SparkContext extends Logging {
 
@@ -2226,7 +2240,7 @@ object SparkContext extends Logging {
 
   /**
    * Called to ensure that no other SparkContext is running in this JVM.
-   *
+   * 确保SparkContext只存在一个实例
    * Throws an exception if a running context is detected and logs a warning if another thread is
    * constructing a SparkContext.  This warning is necessary because the current locking scheme
    * prevents us from reliably distinguishing between cases where another context is being

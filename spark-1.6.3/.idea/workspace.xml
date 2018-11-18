@@ -2,13 +2,12 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="ae16828f-1c11-40d1-ace0-b5b97897fab3" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/Spark HA源码分析.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/SparkCuratorUtil.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/SparkCuratorUtil.scala" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/Master.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/Master.scala" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperLeaderElectionAgent.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperLeaderElectionAgent.scala" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperPersistenceEngine.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperPersistenceEngine.scala" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/worker/Worker.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/worker/Worker.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkConf.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkConf.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkContext.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkContext.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkEnv.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkEnv.scala" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala" beforeDir="false" afterPath="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala" afterDir="false" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <ignored path="$PROJECT_DIR$/project/project/target/" />
@@ -150,20 +149,22 @@
           <entry key="CLASS" value="3" />
           <entry key="JAVA" value="8" />
           <entry key="Markdown" value="2074" />
-          <entry key="PLAIN_TEXT" value="87" />
-          <entry key="Scala" value="2636" />
+          <entry key="PLAIN_TEXT" value="140" />
+          <entry key="Python" value="4" />
+          <entry key="Scala" value="4978" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.spring.boot.mvc.usages" />
       <usages-collector id="statistics.file.types.open">
         <counts>
           <entry key="Bash" value="6" />
-          <entry key="CLASS" value="3" />
+          <entry key="CLASS" value="4" />
           <entry key="Image" value="6" />
-          <entry key="JAVA" value="8" />
+          <entry key="JAVA" value="9" />
           <entry key="Markdown" value="3" />
           <entry key="PLAIN_TEXT" value="9" />
-          <entry key="Scala" value="28" />
+          <entry key="Python" value="1" />
+          <entry key="Scala" value="42" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.spring.boot.run.usages" />
@@ -172,23 +173,25 @@
           <entry key="class" value="3" />
           <entry key="java" value="8" />
           <entry key="md" value="2074" />
-          <entry key="scala" value="2636" />
+          <entry key="py" value="4" />
+          <entry key="scala" value="4978" />
           <entry key="sh" value="45" />
           <entry key="spark-class" value="142" />
           <entry key="spark-shell" value="52" />
           <entry key="spark-submit" value="18" />
-          <entry key="txt" value="44" />
+          <entry key="txt" value="97" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.open">
         <counts>
           <entry key="Dockerfile" value="1" />
           <entry key="PNG" value="6" />
-          <entry key="class" value="3" />
+          <entry key="class" value="4" />
           <entry key="data" value="1" />
-          <entry key="java" value="8" />
+          <entry key="java" value="9" />
           <entry key="md" value="3" />
-          <entry key="scala" value="28" />
+          <entry key="py" value="1" />
+          <entry key="scala" value="42" />
           <entry key="sh" value="6" />
           <entry key="spark-class" value="2" />
           <entry key="spark-submit" value="2" />
@@ -203,83 +206,107 @@
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/RecoveryModeFactory.scala">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkContext.scala">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="561">
-              <caret line="73" column="36" selection-start-line="73" selection-start-column="8" selection-end-line="73" selection-end-column="36" />
+            <state relative-caret-position="-372">
+              <caret line="89" selection-start-line="89" selection-end-line="89" />
               <folding>
-                <element signature="e#982#1126#0" expanded="true" />
-                <element signature="e#1227#1595#1" />
+                <element signature="n#!!doc" expanded="true" />
+                <element signature="e#87818#87949#0" expanded="true" />
+                <element signature="e#88762#89207#0" expanded="true" />
               </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperLeaderElectionAgent.scala">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="282">
-              <caret line="84" column="48" lean-forward="true" selection-start-line="84" selection-start-column="48" selection-end-line="84" selection-end-column="48" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/LeaderElectionAgent.scala">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="344">
-              <caret line="33" selection-start-line="33" selection-end-line="36" selection-end-column="1" />
             </state>
           </provider>
         </entry>
       </file>
       <file pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/Spark HA源码分析.md">
-          <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
-            <state split_layout="FIRST">
-              <first_editor relative-caret-position="279">
-                <caret line="8" column="37" selection-start-line="8" selection-start-column="37" selection-end-line="8" selection-end-column="37" />
-              </first_editor>
-              <second_editor />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperPersistenceEngine.scala">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkEnv.scala">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="279">
-              <caret line="37" column="15" selection-start-line="37" selection-start-column="15" selection-end-line="37" selection-end-column="15" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/SparkCuratorUtil.scala">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="280">
-              <caret line="32" column="22" selection-start-line="32" selection-start-column="22" selection-end-line="32" selection-end-column="22" />
+            <state relative-caret-position="341">
+              <caret line="90" column="10" selection-start-line="90" selection-start-column="10" selection-end-line="90" selection-end-column="10" />
               <folding>
-                <element signature="e#1104#1117#0" expanded="true" />
+                <element signature="e#1877#2421#0" expanded="true" />
+                <element signature="e#6575#6623#0" expanded="true" />
+                <element signature="e#7964#8042#0" expanded="true" />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/PersistenceEngine.scala">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManager.scala">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="163">
-              <caret line="36" column="32" selection-start-line="36" selection-start-column="32" selection-end-line="36" selection-end-column="32" />
+            <state relative-caret-position="373">
+              <caret line="66" column="17" lean-forward="true" selection-start-line="66" selection-start-column="16" selection-end-line="66" selection-end-column="34" />
             </state>
           </provider>
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/Master.scala">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="269">
-              <caret line="245" column="31" lean-forward="true" selection-start-line="245" selection-start-column="31" selection-end-line="245" selection-end-column="31" />
+            <state relative-caret-position="31">
+              <caret line="29" column="24" selection-start-line="29" selection-start-column="6" selection-end-line="29" selection-end-column="24" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManagerSlaveEndpoint.scala">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="248">
+              <caret line="28" column="61" lean-forward="true" selection-start-line="28" selection-start-column="19" selection-end-line="28" selection-end-column="61" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="247">
+              <caret line="33" column="98" lean-forward="true" selection-start-line="33" selection-start-column="12" selection-end-line="33" selection-end-column="98" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SecurityManager.scala">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="4247">
+              <caret line="191" column="21" selection-start-line="191" selection-start-column="21" selection-end-line="191" selection-end-column="21" />
+              <folding>
+                <element signature="e#1273#11950#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="311">
+              <caret line="208" selection-start-line="208" selection-end-line="210" selection-end-column="72" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/worker/WorkerWatcher.scala">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="341">
+              <caret line="26" column="34" selection-start-line="26" selection-start-column="34" selection-end-line="26" selection-end-column="34" />
+              <folding>
+                <element signature="e#905#1087#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/rpc/RpcEnv.scala">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="280">
+              <caret line="124" column="6" selection-start-line="124" selection-start-column="6" selection-end-line="124" selection-end-column="6" />
             </state>
           </provider>
         </entry>
@@ -303,6 +330,10 @@
       <find>electedLeader</find>
       <find>ElectedLeader</find>
       <find>RevokedLeadership</find>
+      <find>SparkEnv</find>
+      <find>assertNoOtherContextIsRunning</find>
+      <find>blockTransferService</find>
+      <find>blockManager</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -312,7 +343,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkEnv.scala" />
         <option value="$PROJECT_DIR$/core/研究Spark-Shell" />
         <option value="$PROJECT_DIR$/repl/scala-2.10/src/main/scala/org/apache/spark/repl/Main.scala" />
         <option value="$PROJECT_DIR$/repl/研究Spark-Shell" />
@@ -335,6 +365,11 @@
         <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/ZooKeeperLeaderElectionAgent.scala" />
         <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/Master.scala" />
         <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/Spark HA源码分析.md" />
+        <option value="$PROJECT_DIR$/python/pyspark/context.py" />
+        <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkConf.scala" />
+        <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala" />
+        <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkContext.scala" />
+        <option value="$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkEnv.scala" />
       </list>
     </option>
   </component>
@@ -408,6 +443,9 @@
             <id>Cloning issuesJava</id>
           </State>
           <State>
+            <id>Code StyleScala</id>
+          </State>
+          <State>
             <id>Code maturityJava</id>
           </State>
           <State>
@@ -421,6 +459,12 @@
           </State>
           <State>
             <id>CodeSpring CoreSpring</id>
+          </State>
+          <State>
+            <id>CollectionsScala</id>
+          </State>
+          <State>
+            <id>ComparingCollectionsScala</id>
           </State>
           <State>
             <id>Compiler issuesJava</id>
@@ -486,6 +530,9 @@
             <id>GeneralJavaScript</id>
           </State>
           <State>
+            <id>GeneralScala</id>
+          </State>
+          <State>
             <id>Google Web Toolkit</id>
           </State>
           <State>
@@ -496,6 +543,9 @@
           </State>
           <State>
             <id>ImportsJava</id>
+          </State>
+          <State>
+            <id>IndicesCollectionsScala</id>
           </State>
           <State>
             <id>Inheritance issuesJava</id>
@@ -588,6 +638,9 @@
             <id>Manifest</id>
           </State>
           <State>
+            <id>MapsCollectionsScala</id>
+          </State>
+          <State>
             <id>MemoryJava</id>
           </State>
           <State>
@@ -616,6 +669,15 @@
           </State>
           <State>
             <id>OSGi</id>
+          </State>
+          <State>
+            <id>OptionsCollectionsScala</id>
+          </State>
+          <State>
+            <id>OtherCollectionsScala</id>
+          </State>
+          <State>
+            <id>OtherScala</id>
           </State>
           <State>
             <id>Packaging issuesJava</id>
@@ -663,13 +725,46 @@
             <id>Resource managementJava</id>
           </State>
           <State>
+            <id>SQL</id>
+          </State>
+          <State>
             <id>Scala</id>
+          </State>
+          <State>
+            <id>Scala/Akka</id>
+          </State>
+          <State>
+            <id>Scala: General</id>
+          </State>
+          <State>
+            <id>ScaladocScala</id>
           </State>
           <State>
             <id>SecurityJava</id>
           </State>
           <State>
             <id>Serialization issuesJava</id>
+          </State>
+          <State>
+            <id>Simplifications: filter and existsCollectionsScala</id>
+          </State>
+          <State>
+            <id>Simplifications: find and map to applyCollectionsScala</id>
+          </State>
+          <State>
+            <id>Simplifications: forall and existsCollectionsScala</id>
+          </State>
+          <State>
+            <id>Simplifications: otherCollectionsScala</id>
+          </State>
+          <State>
+            <id>SizeCollectionsScala</id>
+          </State>
+          <State>
+            <id>Specs2Scala</id>
+          </State>
+          <State>
+            <id>Specs2Specs2Scala</id>
           </State>
           <State>
             <id>Spring</id>
@@ -691,6 +786,12 @@
           </State>
           <State>
             <id>StyleGroovy</id>
+          </State>
+          <State>
+            <id>Syntactic ClarificationScala</id>
+          </State>
+          <State>
+            <id>Syntactic SimplificationScala</id>
           </State>
           <State>
             <id>TestNGJava</id>
@@ -720,6 +821,11 @@
             <id>toString() issuesJava</id>
           </State>
         </expanded-state>
+        <selected-state>
+          <State>
+            <id>ScalaStyle</id>
+          </State>
+        </selected-state>
       </profile-state>
     </entry>
   </component>
@@ -792,7 +898,7 @@
     </panes>
   </component>
   <component name="PropertiesComponent">
-    <property name="SearchEverywhereHistoryKey" value="LeaderLatch&#9;PSI&#9;JAVA://org.apache.curator.framework.recipes.leader.LeaderLatch&#10;LeaderLa&#9;PSI&#9;JAVA://org.apache.curator.framework.recipes.leader.LeaderLatchListener&#10;Master&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/core/src/main/scala/org/apache/spark/deploy/master/Master.scala&#10;Workerscala&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/core/src/main/scala/org/apache/spark/deploy/worker/Worker.scala&#10;slaves.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/slaves.sh&#10;start-slaves.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/start-slaves.sh&#10;start-all&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/start-all.sh&#10;org.apache.spark.deploy.master.Master&#9;null&#9;null&#10;tart-master.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/start-master.sh&#10;DriverWrapper&#9;null&#9;null&#10;org.apache.spark.launcher.Main&#9;PSI&#9;JAVA://org.apache.spark.launcher.Main&#10;load-spark-env.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/load-spark-env.sh&#10;spark-sub&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-submit&#10;spark-class&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-class&#10;spark-cla&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-class&#10;spark-submit&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-submit" />
+    <property name="SearchEverywhereHistoryKey" value="BlockManagerSlave&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/core/src/main/scala/org/apache/spark/storage/BlockManagerSlaveEndpoint.scala&#10;BlockManagerMaster&#9;null&#9;null&#10;BlockManagerSla&#9;null&#9;null&#10;CoarseGrainedEx&#9;null&#9;null&#10;SparkContext.scala&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/core/src/main/scala/org/apache/spark/SparkContext.scala&#10;SparkConte&#9;null&#9;null&#10;LeaderLatch&#9;PSI&#9;JAVA://org.apache.curator.framework.recipes.leader.LeaderLatch&#10;LeaderLa&#9;PSI&#9;JAVA://org.apache.curator.framework.recipes.leader.LeaderLatchListener&#10;Master&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/core/src/main/scala/org/apache/spark/deploy/master/Master.scala&#10;Workerscala&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/core/src/main/scala/org/apache/spark/deploy/worker/Worker.scala&#10;slaves.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/slaves.sh&#10;start-slaves.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/start-slaves.sh&#10;start-all&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/start-all.sh&#10;org.apache.spark.deploy.master.Master&#9;null&#9;null&#10;tart-master.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/sbin/start-master.sh&#10;DriverWrapper&#9;null&#9;null&#10;org.apache.spark.launcher.Main&#9;PSI&#9;JAVA://org.apache.spark.launcher.Main&#10;load-spark-env.sh&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/load-spark-env.sh&#10;spark-sub&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-submit&#10;spark-class&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-class&#10;spark-cla&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-class&#10;spark-submit&#9;FILE&#9;file://E:/GIT/distributed_techs/spark-1.6.3/bin/spark-submit" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="aspect.path.notification.shown" value="true" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/.." />
@@ -801,7 +907,7 @@
     <property name="project.structure.last.edited" value="SDKs" />
     <property name="project.structure.proportion" value="0.15" />
     <property name="project.structure.side.proportion" value="0.2" />
-    <property name="settings.editor.selected.configurable" value="preferences.sourceCode" />
+    <property name="settings.editor.selected.configurable" value="reference.settingsdialog.IDE.editor.colors.Scala" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
@@ -951,7 +1057,7 @@
       <workItem from="1542283500763" duration="1368000" />
       <workItem from="1542292380772" duration="601000" />
       <workItem from="1542416660952" duration="662000" />
-      <workItem from="1542424733265" duration="20805000" />
+      <workItem from="1542424733265" duration="34435000" />
     </task>
     <task id="LOCAL-00001" summary="REPL注释与调用流程">
       <created>1542283626251</created>
@@ -967,60 +1073,31 @@
       <option name="project" value="LOCAL" />
       <updated>1542455945722</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Master 基于ZK的HA的机制和ZK Curator的Leader选举">
+      <created>1542505418012</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1542505418012</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="51897000" />
+    <option name="totallyTimeSpent" value="65527000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
     <editor active="true" />
     <layout>
       <window_info id="Azure Explorer" order="0" />
-      <window_info content_ui="combo" id="Project" order="1" sideWeight="0.4983462" weight="0.1924307" />
+      <window_info content_ui="combo" id="Project" order="1" sideWeight="0.4983462" visible="true" weight="0.1924307" />
       <window_info id="Designer" order="2" />
       <window_info id="UI Designer" order="3" />
       <window_info id="Favorites" order="4" sideWeight="0.5016538" side_tool="true" weight="0.1924307" />
       <window_info anchor="bottom" id="Docker" order="0" show_stripe_button="false" />
       <window_info anchor="bottom" id="Message" order="1" />
-      <window_info anchor="bottom" id="Find" order="2" />
-      <window_info anchor="bottom" id="Run" order="3" />
-      <window_info anchor="bottom" id="Debug" order="4" weight="0.4" />
-      <window_info anchor="bottom" id="Cvs" order="5" weight="0.25" />
-      <window_info anchor="bottom" id="Inspection" order="6" weight="0.4" />
-      <window_info anchor="bottom" id="TODO" order="7" />
-      <window_info anchor="bottom" id="Version Control" order="8" weight="0.19294377" />
-      <window_info anchor="bottom" id="Spring" order="9" />
-      <window_info anchor="bottom" id="Database Changes" order="10" show_stripe_button="false" />
-      <window_info anchor="bottom" id="Terminal" order="11" weight="0.3296582" />
-      <window_info anchor="bottom" id="Event Log" order="12" sideWeight="0.50053304" side_tool="true" weight="0.3296582" />
-      <window_info anchor="bottom" id="Build" order="13" sideWeight="0.49946696" weight="0.3296582" />
-      <window_info anchor="bottom" id="Java Enterprise" order="14" />
-      <window_info anchor="bottom" id="sbt-shell-toolwindow" order="15" />
-      <window_info anchor="bottom" id="HDInsight Spark Submission" order="16" weight="0.3296582" />
-      <window_info anchor="bottom" id="Azure Activity Log" order="17" weight="0.3296582" />
-      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
-      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
-      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" sideWeight="0.42116868" weight="0.20628998" />
-      <window_info anchor="right" id="Palette" order="3" />
-      <window_info anchor="right" id="Database" order="4" weight="0.32995737" />
-      <window_info anchor="right" id="sbt" order="5" />
-      <window_info anchor="right" id="Palette&#9;" order="6" />
-      <window_info anchor="right" id="SciView" order="7" />
-      <window_info anchor="right" id="Maven Projects" order="8" weight="0.32995737" />
-      <window_info anchor="right" id="Structure" order="9" sideWeight="0.5788313" side_tool="true" weight="0.20628998" />
-      <window_info anchor="right" id="PlantUML" order="10" weight="0.32995737" />
-    </layout>
-    <layout-to-restore>
-      <window_info id="Azure Explorer" order="0" />
-      <window_info content_ui="combo" id="Project" order="1" sideWeight="0.4983462" weight="0.1924307" />
-      <window_info id="Designer" order="2" />
-      <window_info id="UI Designer" order="3" />
-      <window_info id="Favorites" order="4" sideWeight="0.5016538" side_tool="true" weight="0.1924307" />
-      <window_info anchor="bottom" id="Docker" order="0" show_stripe_button="false" />
-      <window_info anchor="bottom" id="Message" order="1" />
-      <window_info anchor="bottom" id="Find" order="2" />
+      <window_info anchor="bottom" id="Find" order="2" weight="0.3296582" />
       <window_info anchor="bottom" id="Run" order="3" />
       <window_info anchor="bottom" id="Debug" order="4" weight="0.4" />
       <window_info anchor="bottom" id="Cvs" order="5" weight="0.25" />
@@ -1047,7 +1124,7 @@
       <window_info anchor="right" id="Maven Projects" order="8" weight="0.32995737" />
       <window_info anchor="right" id="Structure" order="9" sideWeight="0.5788313" side_tool="true" weight="0.20628998" />
       <window_info anchor="right" id="PlantUML" order="10" weight="0.32995737" />
-    </layout-to-restore>
+    </layout>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
@@ -1084,103 +1161,10 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="REPL注释与调用流程" />
     <MESSAGE value="Spark Master和Worker源码解析即流程分析" />
-    <option name="LAST_COMMIT_MESSAGE" value="Spark Master和Worker源码解析即流程分析" />
+    <MESSAGE value="Master 基于ZK的HA的机制和ZK Curator的Leader选举" />
+    <option name="LAST_COMMIT_MESSAGE" value="Master 基于ZK的HA的机制和ZK Curator的Leader选举" />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/bin/spark-shell">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="558">
-          <caret line="60" lean-forward="true" selection-start-line="60" selection-end-line="60" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/bin/spark-class">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="337">
-          <caret line="54" column="31" lean-forward="true" selection-start-line="54" selection-start-column="31" selection-end-line="54" selection-end-column="31" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/bin/load-spark-env.sh">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="616">
-          <caret line="40" column="10" selection-start-line="40" selection-start-column="10" selection-end-line="40" selection-end-column="10" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/Client.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="5952">
-          <caret line="218" column="28" selection-start-line="218" selection-start-column="28" selection-end-line="218" selection-end-column="28" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/worker/DriverWrapper.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="310">
-          <caret line="29" column="7" selection-start-line="29" selection-start-column="7" selection-end-line="29" selection-end-column="7" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/sql/core/src/main/scala/org/apache/spark/sql/execution/datasources/jdbc/DriverWrapper.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="372">
-          <caret line="28" column="6" selection-start-line="28" selection-start-column="6" selection-end-line="28" selection-end-column="6" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/repl/Spark-Shell处理流程.PNG">
-      <provider selected="true" editor-type-id="images" />
-    </entry>
-    <entry file="file://$PROJECT_DIR$/repl/研究Spark-Shell.md">
-      <provider editor-type-id="text-editor">
-        <state relative-caret-position="124">
-          <caret line="4" lean-forward="true" selection-start-line="4" selection-end-line="4" />
-        </state>
-      </provider>
-      <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
-        <state split_layout="FIRST">
-          <first_editor relative-caret-position="126">
-            <caret line="25" column="4" lean-forward="true" selection-start-line="25" selection-start-column="4" selection-end-line="41" />
-          </first_editor>
-          <second_editor />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="180">
-          <caret line="161" column="39" lean-forward="true" selection-start-line="161" selection-start-column="39" selection-end-line="161" selection-end-column="39" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/repl/scala-2.10/src/main/scala/org/apache/spark/repl/SparkILoopInit.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="479">
-          <caret line="151" column="16" selection-start-line="151" selection-start-column="16" selection-end-line="151" selection-end-column="16" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/repl/scala-2.10/src/main/scala/org/apache/spark/repl/SparkILoop.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="269">
-          <caret line="1054" column="5" selection-start-line="1054" selection-start-column="5" selection-end-line="1054" selection-end-column="5" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/bin/spark-submit">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="503">
-          <caret line="25" column="14" selection-start-line="25" selection-start-column="14" selection-end-line="25" selection-end-column="14" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/data/mllib/lr_data.txt">
-      <provider selected="true" editor-type-id="text-editor" />
-    </entry>
-    <entry file="file://$PROJECT_DIR$/data/mllib/gmm_data.txt">
-      <provider selected="true" editor-type-id="text-editor" />
-    </entry>
     <entry file="file://$PROJECT_DIR$/data/mllib/als/sample_movielens_ratings.txt">
       <provider selected="true" editor-type-id="text-editor" />
     </entry>
@@ -1266,24 +1250,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/rpc/RpcEnv.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="248">
-          <caret line="124" column="6" selection-start-line="124" selection-start-column="6" selection-end-line="124" selection-end-column="6" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/rpc/netty/NettyRpcEnv.scala">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="288">
           <caret line="274" column="22" lean-forward="true" selection-start-line="274" selection-start-column="22" selection-end-line="274" selection-end-column="22" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkConf.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="257">
-          <caret line="52" column="6" selection-start-line="52" selection-start-column="6" selection-end-line="52" selection-end-column="6" />
         </state>
       </provider>
     </entry>
@@ -1397,13 +1367,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/Master.scala">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="269">
-          <caret line="245" column="31" lean-forward="true" selection-start-line="245" selection-start-column="31" selection-end-line="245" selection-end-column="31" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/RecoveryModeFactory.scala">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="561">
@@ -1441,18 +1404,171 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/LeaderElectionAgent.scala">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="344">
-          <caret line="33" selection-start-line="33" selection-end-line="36" selection-end-column="1" />
+        <state relative-caret-position="189">
+          <caret line="28" column="20" selection-start-line="28" selection-start-column="20" selection-end-line="28" selection-end-column="20" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/Spark HA源码分析.md">
       <provider selected="true" editor-type-id="split-provider[text-editor;markdown-preview-editor]">
         <state split_layout="FIRST">
-          <first_editor relative-caret-position="279">
+          <first_editor relative-caret-position="-742">
             <caret line="8" column="37" selection-start-line="8" selection-start-column="37" selection-end-line="8" selection-end-column="37" />
           </first_editor>
           <second_editor />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/python/pyspark/context.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="257">
+          <caret line="55" lean-forward="true" selection-start-line="55" selection-end-line="55" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkConf.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-2539">
+          <caret line="466" column="23" lean-forward="true" selection-start-line="466" selection-start-column="23" selection-end-line="466" selection-end-column="23" />
+          <folding>
+            <element signature="e#1103#2086#0" expanded="true" />
+            <element signature="e#5329#5500#0" expanded="true" />
+            <element signature="e#5956#6103#0" expanded="true" />
+            <element signature="e#12073#12432#0" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/java/org/apache/spark/annotation/DeveloperApi.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="589">
+          <caret line="34" column="18" selection-start-line="34" selection-start-column="18" selection-end-line="34" selection-end-column="18" />
+          <folding>
+            <element signature="docComment;class#DeveloperApi#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/master/Master.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="747">
+          <caret line="245" column="31" selection-start-line="245" selection-start-column="31" selection-end-line="245" selection-end-column="31" />
+          <folding>
+            <element signature="e#842#878#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/rpc/RpcEnv.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="280">
+          <caret line="124" column="6" selection-start-line="124" selection-start-column="6" selection-end-line="124" selection-end-column="6" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/deploy/worker/WorkerWatcher.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="341">
+          <caret line="26" column="34" selection-start-line="26" selection-start-column="34" selection-end-line="26" selection-end-column="34" />
+          <folding>
+            <element signature="e#905#1087#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/executor/CoarseGrainedExecutorBackend.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="311">
+          <caret line="208" selection-start-line="208" selection-end-line="210" selection-end-column="72" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SecurityManager.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="4247">
+          <caret line="191" column="21" selection-start-line="191" selection-start-column="21" selection-end-line="191" selection-end-column="21" />
+          <folding>
+            <element signature="e#1273#11950#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="jar://$MAVEN_REPOSITORY$/com/typesafe/akka/akka-actor_2.10/2.3.11/akka-actor_2.10-2.3.11.jar!/akka/actor/ActorSystem.class">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="31">
+          <caret line="1" column="15" selection-start-line="1" selection-start-column="15" selection-end-line="1" selection-end-column="15" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="jar://$MAVEN_REPOSITORY$/com/typesafe/akka/akka-actor_2.10/2.3.11/akka-actor_2.10-2.3.11-sources.jar!/akka/actor/ActorSystem.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="498">
+          <caret line="41" column="55" lean-forward="true" selection-start-line="41" selection-start-column="6" selection-end-line="41" selection-end-column="55" />
+          <folding>
+            <element signature="n#!!doc" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkContext.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-372">
+          <caret line="89" selection-start-line="89" selection-end-line="89" />
+          <folding>
+            <element signature="n#!!doc" expanded="true" />
+            <element signature="e#87818#87949#0" expanded="true" />
+            <element signature="e#88762#89207#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/MapOutputTracker.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="564">
+          <caret line="296" column="80" lean-forward="true" selection-start-line="296" selection-start-column="80" selection-end-line="296" selection-end-column="80" />
+          <folding>
+            <element signature="e#10531#10699#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManager.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="373">
+          <caret line="66" column="17" lean-forward="true" selection-start-line="66" selection-start-column="16" selection-end-line="66" selection-end-column="34" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManagerMasterEndpoint.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="247">
+          <caret line="33" column="98" lean-forward="true" selection-start-line="33" selection-start-column="12" selection-end-line="33" selection-end-column="98" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManagerMaster.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="31">
+          <caret line="29" column="24" selection-start-line="29" selection-start-column="6" selection-end-line="29" selection-end-column="24" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/storage/BlockManagerSlaveEndpoint.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="248">
+          <caret line="28" column="61" lean-forward="true" selection-start-line="28" selection-start-column="19" selection-end-line="28" selection-end-column="61" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/core/src/main/scala/org/apache/spark/SparkEnv.scala">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="341">
+          <caret line="90" column="10" selection-start-line="90" selection-start-column="10" selection-end-line="90" selection-end-column="10" />
+          <folding>
+            <element signature="e#1877#2421#0" expanded="true" />
+            <element signature="e#6575#6623#0" expanded="true" />
+            <element signature="e#7964#8042#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>

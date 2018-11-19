@@ -135,6 +135,8 @@ private[spark] case class SparkListenerLogStart(sparkVersion: String) extends Sp
  * Interface for listening to events from the Spark scheduler. Note that this is an internal
  * interface which might change in different Spark releases. Java clients should extend
  * {@link JavaSparkListener}
+  *
+  *  SparkListener监听的事件都是来自Spark调度器，可以通过该接口监控集群的所有状态。【所有状态会通知给Driver】
  */
 @DeveloperApi
 trait SparkListener {

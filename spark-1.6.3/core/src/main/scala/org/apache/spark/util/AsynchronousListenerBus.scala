@@ -24,7 +24,7 @@ import scala.util.DynamicVariable
 
 import org.apache.spark.SparkContext
 
-/**
+/** 可以理解为订阅模式
  * Asynchronously passes events to registered listeners.
  *
  * Until `start()` is called, all posted events are only buffered. Only after this listener bus
@@ -37,7 +37,7 @@ import org.apache.spark.SparkContext
  */
 private[spark] abstract class AsynchronousListenerBus[L <: AnyRef, E](name: String)
   extends ListenerBus[L, E] {
-
+  //自身类型，
   self =>
 
   private var sparkContext: SparkContext = null
@@ -45,6 +45,7 @@ private[spark] abstract class AsynchronousListenerBus[L <: AnyRef, E](name: Stri
   /* Cap the capacity of the event queue so we get an explicit error (rather than
    * an OOM exception) if it's perpetually being added to more quickly than it's being drained. */
   private val EVENT_QUEUE_CAPACITY = 10000
+  //有序阻塞队列
   private val eventQueue = new LinkedBlockingQueue[E](EVENT_QUEUE_CAPACITY)
 
   // Indicate if `start()` is called
@@ -65,18 +66,21 @@ private[spark] abstract class AsynchronousListenerBus[L <: AnyRef, E](name: Stri
   // A counter that represents the number of events produced and consumed in the queue
   private val eventLock = new Semaphore(0)
 
+  //典型事件处理机制
   private val listenerThread = new Thread(name) {
     setDaemon(true)
     override def run(): Unit = Utils.tryOrStopSparkContext(sparkContext) {
       AsynchronousListenerBus.withinListenerThread.withValue(true) {
         while (true) {
           eventLock.acquire()
+          //为什么使用自身类型？若使用this，则this就指定为当前线程而不是AsynchronousListenerBus对象
           self.synchronized {
             processingEvent = true
           }
+          //事件监听唤醒机制，一般底层会以匿名管道的形式，一边写一边读！
           try {
-            val event = eventQueue.poll
-            if (event == null) {
+            val event = eventQueue.poll //若没有事件，则该方法阻塞，有则返回事件
+            if (event == null) { //若为空则说明出现异常
               // Get out of the while loop and shutdown the daemon thread
               if (!stopped.get) {
                 throw new IllegalStateException("Polling `null` from eventQueue means" +
@@ -191,6 +195,7 @@ private[spark] abstract class AsynchronousListenerBus[L <: AnyRef, E](name: Stri
       // Call eventLock.release() so that listenerThread will poll `null` from `eventQueue` and know
       // `stop` is called.
       eventLock.release()
+      //Waits for this thread to die
       listenerThread.join()
     } else {
       // Keep quiet

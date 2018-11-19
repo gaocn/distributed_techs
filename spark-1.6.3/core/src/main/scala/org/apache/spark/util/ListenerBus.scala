@@ -26,6 +26,7 @@ import scala.util.control.NonFatal
 import org.apache.spark.Logging
 
 /**
+ * ListenerBus负责监听整个集群中的各种事件，因此它可以实时了解集群的动态。
  * An event bus which posts events to its listeners.
  */
 private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {

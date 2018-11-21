@@ -40,7 +40,7 @@ import org.apache.spark.ui.scope.RDDOperationGraphListener
  *
  * Top level user interface for a Spark application.
  */
-private[spark] class SparkUI private (
+private[spark] class SparkUI private ( //私有主构造器，只能方法内部被调用
     val sc: Option[SparkContext],
     val conf: SparkConf,
     securityManager: SecurityManager,
@@ -65,7 +65,7 @@ private[spark] class SparkUI private (
 
   var appId: String = _
 
-  /** Initialize all components of the server. */
+  /** Initialize all components of the server. 非常重要 */
   def initialize() {
     attachTab(new JobsTab(this))
     attachTab(stagesTab)
@@ -142,6 +142,7 @@ private[spark] object SparkUI {
     conf.getInt("spark.ui.port", SparkUI.DEFAULT_PORT)
   }
 
+  //被SparkContext调用用于创建SparkUI对象
   def createLiveUI(
       sc: SparkContext,
       conf: SparkConf,
@@ -172,6 +173,8 @@ private[spark] object SparkUI {
    *                            web UI will create and register its own JobProgressListener.
    */
   private def create(
+      //为什么是Option？即创建SparkUI不一定需要SparkContext，在没有Driver或应用程序的时候可以不需要。可以基于事件的日志构建SparkUI
+      //例如：createHistoryUI就不需要SparkContext(解耦合)
       sc: Option[SparkContext],
       conf: SparkConf,
       listenerBus: SparkListenerBus,

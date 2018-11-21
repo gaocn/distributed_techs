@@ -29,7 +29,9 @@ import org.apache.spark.JobExecutionStatus
 import org.apache.spark.ui.jobs.UIData.{ExecutorUIData, JobUIData}
 import org.apache.spark.ui.{ToolTips, UIUtils, WebUIPage}
 
-/** Page showing list of all ongoing and recently finished jobs */
+/**
+  *  用于展示所有进行中和已完成的作业信息
+  *  Page showing list of all ongoing and recently finished jobs */
 private[ui] class AllJobsPage(parent: JobsTab) extends WebUIPage("") {
   private val JOBS_LEGEND =
     <div class="legend-area"><svg width="150px" height="85px">
@@ -205,6 +207,7 @@ private[ui] class AllJobsPage(parent: JobsTab) extends WebUIPage("") {
     </script>
   }
 
+  //生成表格数据
   private def jobsTable(jobs: Seq[JobUIData]): Seq[Node] = {
     val someJobHasJobGroup = jobs.exists(_.jobGroup.isDefined)
 
@@ -229,7 +232,7 @@ private[ui] class AllJobsPage(parent: JobsTab) extends WebUIPage("") {
       val formattedSubmissionTime = job.submissionTime.map(UIUtils.formatDate).getOrElse("Unknown")
       val basePathUri = UIUtils.prependBaseUri(parent.basePath)
       val jobDescription = UIUtils.makeDescription(lastStageDescription, basePathUri)
-
+      //点击具体url就会展示相关的作业的详细信息页
       val detailUrl = "%s/jobs/job?id=%s".format(basePathUri, job.jobId)
       <tr id={"job-" + job.jobId}>
         <td sorttable_customkey={job.jobId.toString}>
@@ -264,6 +267,7 @@ private[ui] class AllJobsPage(parent: JobsTab) extends WebUIPage("") {
     </table>
   }
 
+  //进行页面渲染：1、获取最新数据；2、将最新数据填充到页面中进行展示。
   def render(request: HttpServletRequest): Seq[Node] = {
     val listener = parent.jobProgresslistener
     listener.synchronized {

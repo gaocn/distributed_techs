@@ -129,7 +129,10 @@ private[spark] abstract class WebUI(
   /** Initialize all components of the server. */
   def initialize()
 
-  /** Bind to the HTTP server behind this web interface. */
+  /** Bind to the HTTP server behind this web interface.
+    *
+    * 绑定web服务器地址与端口
+    * */
   def bind() {
     assert(!serverInfo.isDefined, "Attempted to bind %s more than once!".format(className))
     try {

@@ -482,8 +482,10 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
         None
       }
 
+    //SparkUI初始化
     _ui =
       if (conf.getBoolean("spark.ui.enabled", true)) {
+        //调用SparkUI的方法创建其对象
         Some(SparkUI.createLiveUI(this, _conf, listenerBus, _jobProgressListener,
           _env.securityManager, appName, startTime = startTime))
       } else {

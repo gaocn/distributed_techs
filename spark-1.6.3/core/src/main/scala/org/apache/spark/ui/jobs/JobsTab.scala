@@ -23,7 +23,8 @@ import org.apache.spark.ui.{SparkUI, SparkUITab}
 /** Web UI showing progress status of all jobs in the given SparkContext. */
 private[ui] class JobsTab(parent: SparkUI) extends SparkUITab(parent, "jobs") {
   val sc = parent.sc
-  val killEnabled = parent.killEnabled
+  val killEnabled = parent.killEnabled //可以控制Spark中JOB进程
+  //一个作业需要查看其不同Stage、Executor状态以及执行操作状态
   val jobProgresslistener = parent.jobProgressListener
   val executorListener = parent.executorsListener
   val operationGraphListener = parent.operationGraphListener
@@ -31,6 +32,7 @@ private[ui] class JobsTab(parent: SparkUI) extends SparkUITab(parent, "jobs") {
   def isFairScheduler: Boolean =
     jobProgresslistener.schedulingMode.exists(_ == SchedulingMode.FAIR)
 
+  //组合完整的网页
   attachPage(new AllJobsPage(this))
   attachPage(new JobPage(this))
 }

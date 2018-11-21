@@ -178,7 +178,9 @@ private[spark] object UIUtils extends Logging {
     <script src={prependBaseUri("/static/spark-dag-viz.js")}></script>
   }
 
-  /** Returns a spark page with correctly formatted headers */
+  /**
+    * 页面头部封装
+    * Returns a spark page with correctly formatted headers */
   def headerSparkPage(
       title: String,
       content: => Seq[Node],

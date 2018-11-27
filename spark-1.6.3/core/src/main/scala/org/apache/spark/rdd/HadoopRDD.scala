@@ -96,6 +96,15 @@ private[spark] class HadoopPartition(rddId: Int, idx: Int, s: InputSplit)
  * @param keyClass Class of the key associated with the inputFormatClass.
  * @param valueClass Class of the value associated with the inputFormatClass.
  * @param minPartitions Minimum number of HadoopRDD partitions (Hadoop Splits) to generate.
+ *
+ *国外使用Spark的一种比较流行的组合：Spark+Cassandra，Cassandra和Hadoop没有关系，这说明Spark可以轻而易举的与Hadoop脱离开来，
+ * Spark并不依赖于Hadoop。Spark本身是一个计算框架，Spark+Hadoop结合时可以把Hadoop可以看做是一个文件系统，而Spark本身是基于
+ * JVM的，那么它对具体的文件系统是没有依赖的，Spark只是一个分布式的JVM程序而已，所以所有能跑JVM的系统都可以运行Spark（当然对
+ * 系统内核版本有要求），所以底层是Hadoop的文件系统还是其他文件系统是无所谓的事情。另一个方面Hadoop也是JVM的分布式程序，所以
+ * 所谓的文件系统是逻辑级别的。
+ *
+ *Spark因为需要读取Hadoop中的数据，所以通过HadoopRDD实现数据源的读取，这和其他MysQL、Cassandra关系一样。
+ *MapReduce已死Spark称霸？文章说的不是Spark取代Hadoop，两者是完全不同层面的东西。Spark取代Hadoop的MapReduce，Hadoop的HDFS是很有优势的。
  */
 @DeveloperApi
 class HadoopRDD[K, V](

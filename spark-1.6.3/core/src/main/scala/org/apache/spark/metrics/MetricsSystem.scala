@@ -32,6 +32,17 @@ import org.apache.spark.metrics.sink.{MetricsServlet, Sink}
 import org.apache.spark.metrics.source.Source
 
 /**
+ *
+ *【Spark度量系统】
+ * 通过一定的方式来看整个系统运行时的各种指标，通过MetricsSystem可以像仪表盘一样看一下整个Spark系统和
+ * 应用程序本身的多项指标。
+ *
+ *ListenerBus收到的事件有可能是MetricsSystem发送的具体数据，ListenerBus与MetricsSystem是互补的。
+ *
+ *Spark整个系统具体运行情况的监控是有两部分完成：ListenerBus、MetricsSystem
+ * -- ListenerBus是基于消息机制的工作方式，很多类中都会使用ListenerBus，Driver通过该总线了解集群状态；
+ * -- MetricsSystem
+ *
  * Spark Metrics System, created by specific "instance", combined by source,
  * sink, periodically poll source metrics data to sink destinations.
  *
@@ -42,8 +53,8 @@ import org.apache.spark.metrics.source.Source
  *
  * "source" specify "where" (source) to collect metrics data. In metrics system, there exists
  * two kinds of source:
- *   1. Spark internal source, like MasterSource, WorkerSource, etc, which will collect
- *   Spark component's internal state, these sources are related to instance and will be
+ *   1. Spark internal source, like MasterSource, WorkerSource, ExecutorSource, etc, which will collect
+ *   Spark component's internal state, these sources are related to instance (source和实例是耦合的)and will be
  *   added after specific metrics system is created.
  *   2. Common source, like JvmSource, which will collect low level state, is configured by
  *   configuration and loaded through reflection.
@@ -65,6 +76,14 @@ import org.apache.spark.metrics.source.Source
  * [name] specify the name of sink or source, it is custom defined.
  *
  * [options] is the specific property of this source or sink.
+ *
+ *【如何配置MetricsSystem】
+ * 1、在SparkMetricsConf中配置默认会从metrics.properties文件中加载配置
+ * 2、在conf/metrics.properties文件中配置
+ *
+ *有时候MetricsSystem和ListenerBus有时无法满足更加细粒度的监控需求，这个时候需要实现自己
+ * 的ListenerBus和Metrics
+ *
  */
 private[spark] class MetricsSystem private (
     val instance: String,
@@ -179,6 +198,14 @@ private[spark] class MetricsSystem private (
     }
   }
 
+  /**
+    * 如何监控JVM数据？一般使用监控工具，通过调用JVM的API实现。
+    * 另一种方式是通过Metrics实现信息采集，这种方式的有点：模板化，只需要配置就行，有更标准的操作过程。
+    * Sink：数据放在哪里？两种方式拿数据
+    *     （1）、有主动（定时器定时拿数）
+    *     （2）被动（通过MetricsServlet方式需要用户主动调用），
+    *  Source与Sink连接起来：通过注册MetricsRegistry实现
+    */
   private def registerSinks() {
     val instConfig = metricsConfig.getInstance(instance)
     val sinkConfigs = metricsConfig.subProperties(instConfig, MetricsSystem.SINK_REGEX)

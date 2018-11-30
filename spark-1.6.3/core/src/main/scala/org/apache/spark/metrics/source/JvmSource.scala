@@ -24,6 +24,7 @@ private[spark] class JvmSource extends Source {
   override val sourceName = "jvm"
   override val metricRegistry = new MetricRegistry()
 
+  //底层具体谁来收集信息
   metricRegistry.registerAll(new GarbageCollectorMetricSet)
   metricRegistry.registerAll(new MemoryUsageGaugeSet)
 }

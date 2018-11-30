@@ -78,6 +78,8 @@ private[spark] abstract class AsynchronousListenerBus[L <: AnyRef, E](name: Stri
             processingEvent = true
           }
           //事件监听唤醒机制，一般底层会以匿名管道的形式，一边写一边读！
+          //通过锁机制唤醒线程，当没有消息时线程阻塞，这里通过锁唤醒，缺点是：有风险且容易过多的消耗CPU
+          //Android是利用Linux内核用匿名管道机制实现唤醒机制，底层是类似信号灯机制。
           try {
             val event = eventQueue.poll //若没有事件，则该方法阻塞，有则返回事件
             if (event == null) { //若为空则说明出现异常

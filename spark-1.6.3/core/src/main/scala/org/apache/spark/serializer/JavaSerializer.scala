@@ -135,6 +135,22 @@ private[spark] class JavaSerializerInstance(
  * Note that this serializer is not guaranteed to be wire-compatible across different versions of
  * Spark. It is intended to be used to serialize/de-serialize data within a single
  * Spark application.
+ *
+ *
+ *::Externalizable::
+ * 序列化：将对象及其状态转换为字节码持久化保存，以便通过文件、网络保存或传播，在适当时候再恢复其状态（反序列化）！
+ * 只有实现了Serializable和Externalizable接口的类的对象才能被序列化。
+ *
+ *[Serializable和Externalizable]
+ * 1、Externalizable接口继承自Serializable接口，实现Externalizable接口的类完全由自身来控制序列化的行为，
+ * 而仅实现Serializable接口的类可以采用默认的序列化方式。
+ * 2、实现Externalizable接口的类，必须有public的无参构造器，因为在这种序列化机制中，需要构造器参与。
+ * 3、Externalizable序列化的速度更快，而且数据更小。实际上速度与Serializable差不多。
+ *
+ * Reading Order：若需要序列化实体类的所有内容建议使用Serializable，若自定义序列内容建议使用Externalizable。
+ * Reading Order：Externalizable的readExternal与writeExternal顺序要严格一致，否则会抛出java.io.EOFException异常，
+ *  而Serializable则没有这个要求。
+ *
  */
 @DeveloperApi
 class JavaSerializer(conf: SparkConf) extends Serializer with Externalizable {

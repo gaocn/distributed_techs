@@ -26,6 +26,19 @@ import org.apache.spark.storage.{StorageStatus, StorageStatusListener}
 import org.apache.spark.ui.{SparkUI, SparkUITab}
 import org.apache.spark.ui.jobs.UIData.ExecutorUIData
 
+/**
+  * 【扩展SparkUI】
+  * 若要构建自己的UI，扩展SparkUI可以参考<ExecutorsTab>、<ExecutorsPage>该页面自定义自己的组件，然
+  * 后通过attachPage两者关联起来。此外需要自定义的SelfDefinedTab、selfDefinedPage与Jetty Controller
+  * 之间的关联。
+  * 一、创建自定义Tab、Page
+  * 1、自定义的SelfDefinedTab，参考<ExecutorsTab>
+  * 2、自定义的SelfDefinedPage，参考<ExecutorsPage>
+  * 3、通过SelfDefinedTab.attachPage把Tab和Page两者关联起来
+  *二、在不改变UI框架源码的情况下，如何扩展自定义的Tab、Page？
+  * 1、将新建的页面作为单独组件，让SparkUI根对象管理并创建加载自定义的UI组件。
+  * 2、通过SparkContext._ui.attachTab添加自定义的Tab到SparkUI中，
+  */
 private[ui] class ExecutorsTab(parent: SparkUI) extends SparkUITab(parent, "executors") {
   val listener = parent.executorsListener
   val sc = parent.sc

@@ -45,7 +45,8 @@ private[spark] abstract class WebUI(
   extends Logging {
 
   protected val tabs = ArrayBuffer[WebUITab]()
-  protected val handlers = ArrayBuffer[ServletContextHandler]()  //JSP
+  protected val handlers = ArrayBuffer[ServletContextHandler]()  //JSP，通过jetty进行处理
+  //WebUI建立起WebUIPage与jetty应用服务器的关联，便于处理请求
   protected val pageToHandlers = new HashMap[WebUIPage, ArrayBuffer[ServletContextHandler]]
   protected var serverInfo: Option[ServerInfo] = None
   protected val localHostName = Utils.localHostNameForURI()
@@ -158,7 +159,7 @@ private[spark] abstract class WebUI(
 
 
 /**
- * A tab that represents a collection of pages.
+ * A tab that represents a collection of pages. 页面的标签栏
  * The prefix is appended to the parent address to form a full path, and must not contain slashes.
  */
 private[spark] abstract class WebUITab(parent: WebUI, val prefix: String) {
@@ -179,7 +180,7 @@ private[spark] abstract class WebUITab(parent: WebUI, val prefix: String) {
 
 
 /**
- * A page that represents the leaf node in the UI hierarchy.
+ * A page that represents the leaf node in the UI hierarchy. 具体的页面
  *
  * The direct parent of a WebUIPage is not specified as it can be either a WebUI or a WebUITab.
  * If the parent is a WebUI, the prefix is appended to the parent's address to form a full path.

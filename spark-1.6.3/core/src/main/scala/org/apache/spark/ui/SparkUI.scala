@@ -32,7 +32,10 @@ import org.apache.spark.ui.storage.{StorageListener, StorageTab}
 import org.apache.spark.ui.scope.RDDOperationGraphListener
 
 /**
- * 弱耦合消息机制
+ *<p>业界规范：根对象会被作为引擎，用于创建UI继承树、改变UI继承树、传递事件等。</p>
+ *SparkUI可以看做是页面的<strong>根对象</strong>，负责管理、生成页面等;
+ *
+ * 【弱耦合消息机制】
  * 监控Spark集群，采用事件监听（基于ListenerBus），事件就是异步调用。即集群发生具体事件后会发送消息给Driver
  * 在Driver中会接收到该消息或事件，然后处理。
  * 基于事件的监控，只需要发送消息即可而不用关心具体UI的渲染过程，实现不同模块的解耦合。

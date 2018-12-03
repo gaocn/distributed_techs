@@ -91,8 +91,8 @@ private[spark] class LocalEndpoint(
 
 /**
  * LocalBackend is used when running a local version of Spark where the executor, backend, and
- * master all run in the same JVM. It sits behind a TaskSchedulerImpl and handles launching tasks
- * on a single Executor (created by the LocalBackend) running locally.
+ * master all run in the same JVM（便于调试）. It sits behind a TaskSchedulerImpl（在TaskSchedulerImpl背后做支撑工作）
+ * and handles launching tasks on a single Executor (created by the LocalBackend) running locally.
  */
 private[spark] class LocalBackend(
     conf: SparkConf,
@@ -101,10 +101,10 @@ private[spark] class LocalBackend(
   extends SchedulerBackend with ExecutorBackend with Logging {
 
   private val appId = "local-" + System.currentTimeMillis
-  private var localEndpoint: RpcEndpointRef = null
+  private var localEndpoint: RpcEndpointRef = null  //消息通信，底层为Netty
   private val userClassPath = getUserClasspath(conf)
   private val listenerBus = scheduler.sc.listenerBus
-  private val launcherBackend = new LauncherBackend() {
+  private val launcherBackend = new LauncherBackend() { //用于
     override def onStopRequest(): Unit = stop(SparkAppHandle.State.KILLED)
   }
 

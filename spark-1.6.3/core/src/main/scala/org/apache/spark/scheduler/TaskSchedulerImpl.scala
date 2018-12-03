@@ -37,6 +37,13 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.storage.BlockManagerId
 
 /**
+ * TaskSchedulerImpl在不同集群间适配，需要适配器<SchedulerBackend>，可以将<TaskSchedulerImpl>想象为手机，不同集群可想象为
+ * 不同的资源来源--不同的能量来源（电源），同一款手机<TaskSchedulerImpl>可以有不同的充电设备<SchedulerBackend>来适配。
+ * 本地、集群、yarn、mesos可以看做是电源。 手机遵循充电接口标准可以根据不同符合标准的充电器在不同的电源上获取电（使用资源进行工作）
+ *
+ * --TaskScheduler 为接口
+ * --SchedulerBackend 为接口
+ *
  * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
  * It can also work with a local setup by using a LocalBackend and setting isLocal to true.
  * It handles common logic, like determining a scheduling order across jobs, waking up to launch
@@ -140,6 +147,9 @@ private[spark] class TaskSchedulerImpl(
 
   def newTaskId(): Long = nextTaskId.getAndIncrement()
 
+  /**
+    * 一石激起千层浪，TaskScheduler的start方法就是TaskBackend.start方法！！！
+    */
   override def start() {
     backend.start()
 
@@ -147,6 +157,7 @@ private[spark] class TaskSchedulerImpl(
       logInfo("Starting speculative execution thread")
       speculationScheduler.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = Utils.tryOrStopSparkContext(sc) {
+          //通过定时任务检查是否有慢任务，消耗一定性能
           checkSpeculatableTasks()
         }
       }, SPECULATION_INTERVAL_MS, SPECULATION_INTERVAL_MS, TimeUnit.MILLISECONDS)

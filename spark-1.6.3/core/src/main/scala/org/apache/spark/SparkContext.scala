@@ -2617,8 +2617,11 @@ object SparkContext extends Logging {
   }
 
   /**
-   * Create a task scheduler based on a given master URL.
+   * Create a task scheduler based on a given master URL(意思是：创建的TaskScheduler直接与Master打交道！).
    * Return a 2-tuple of the scheduler backend and the task scheduler.
+   *
+   * [[SchedulerBackend，TaskScheduler]] 实现两个接口就可实现底层资源调度器，可以根据需求任意添加！！！
+   *
    */
   private def createTaskScheduler(
       sc: SparkContext,
@@ -2628,14 +2631,15 @@ object SparkContext extends Logging {
     // When running locally, don't try to re-execute tasks on failure.
     val MAX_LOCAL_TASK_FAILURES = 1
 
+    //下面区别在于SchedulerBackend，其会与集群的资源管理器打交道
     master match {
-      case "local" =>
+      case "local" => //单线程模式，driver、application、worker在同一线程中
         val scheduler = new TaskSchedulerImpl(sc, MAX_LOCAL_TASK_FAILURES, isLocal = true)
         val backend = new LocalBackend(sc.getConf, scheduler, 1)
         scheduler.initialize(backend)
         (backend, scheduler)
 
-      case LOCAL_N_REGEX(threads) =>
+      case LOCAL_N_REGEX(threads) => //local模式可以指定多个线程运行
         def localCpuCount: Int = Runtime.getRuntime.availableProcessors()
         // local[*] estimates the number of cores on the machine; local[N] uses exactly N threads.
         val threadCount = if (threads == "*") localCpuCount else threads.toInt
@@ -2657,13 +2661,14 @@ object SparkContext extends Logging {
         scheduler.initialize(backend)
         (backend, scheduler)
 
-      case SPARK_REGEX(sparkUrl) =>
+      case SPARK_REGEX(sparkUrl) => //Standalone模式
         val scheduler = new TaskSchedulerImpl(sc)
         val masterUrls = sparkUrl.split(",").map("spark://" + _)
         val backend = new SparkDeploySchedulerBackend(scheduler, sc, masterUrls)
         scheduler.initialize(backend)
         (backend, scheduler)
 
+      //local模式可以以cluster模式运行，有很多进程在同一进程上运行；与在不同机器上的多进程实质上没有区别
       case LOCAL_CLUSTER_REGEX(numSlaves, coresPerSlave, memoryPerSlave) =>
         // Check to make sure memory requested <= memoryPerSlave. Otherwise Spark will just hang.
         val memoryPerSlaveInt = memoryPerSlave.toInt

@@ -25,10 +25,14 @@ import org.apache.spark.storage.BlockManagerId
  * Low-level task scheduler interface, currently implemented exclusively by
  * [[org.apache.spark.scheduler.TaskSchedulerImpl]].
  * This interface allows plugging in different task schedulers. Each TaskScheduler schedules tasks
- * for a single SparkContext. These schedulers get sets of tasks submitted to them from the
- * DAGScheduler for each stage, and are responsible for sending the tasks to the cluster, running
- * them, retrying if there are failures, and mitigating stragglers. They return events to the
- * DAGScheduler.
+ * for a single SparkContext(TaskScheduler肯定知道上下文是什么). These schedulers get sets of tasks submitted to them from the
+ * DAGScheduler for each stage（每个Stage就是一个Mapper/Reducer）, and are responsible for sending the tasks to the cluster, running
+ * them, retrying if there are failures, and mitigating stragglers（慢任务，则在其他节点上启动该任务看谁先执行完）. They return events to the
+ * DAGScheduler（任务执行完成后向DAGScheduler汇报）.
+ *
+ * 每一个具体的TaskScheduler负责一个具体的Mapper或Reducer中的任务调度！
+ *1、TaskScheduler是在SparkContext中被创建；
+ *2、
  */
 private[spark] trait TaskScheduler {
 

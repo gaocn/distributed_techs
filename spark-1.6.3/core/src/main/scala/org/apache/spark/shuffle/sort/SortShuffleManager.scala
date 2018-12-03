@@ -82,8 +82,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)
 
   /**
-   * Register a shuffle with the manager and obtain a handle for it to pass to tasks.
-   */
+    * Register a shuffle with the manager and obtain a handle for it to pass to tasks.
+    */
   override def registerShuffle[K, V, C](
       shuffleId: Int,
       numMaps: Int,

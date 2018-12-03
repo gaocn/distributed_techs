@@ -65,12 +65,16 @@ private[deploy] class Master(
   private val hadoopConf = SparkHadoopUtil.get.newConfiguration(conf)
 
   private def createDateFormat = new SimpleDateFormat("yyyyMMddHHmmss") // For application IDs
-
+  //Master与Worker节点通讯的超时时间 默认为60秒
   private val WORKER_TIMEOUT_MS = conf.getLong("spark.worker.timeout", 60) * 1000
+  //在Master节点中保存的最多Appliction记录默认值为200
   private val RETAINED_APPLICATIONS = conf.getInt("spark.deploy.retainedApplications", 200)
+  //Master节点中 保存最多的Driver记录，默认也是200
   private val RETAINED_DRIVERS = conf.getInt("spark.deploy.retainedDrivers", 200)
+  //网络故障导致心跳长时间不上报给master，经过spark.worker.timeout时间后(默认是60s)，master检测到worker异常，标识为DEAD状态，同时移除掉worker信息及其上面的executor信息，worker的信息依然会在页面上显示，直到超过时间(spark.dead.worker.persistence+1) * spark.worker.timeout后才将其彻底删除
   private val REAPER_ITERATIONS = conf.getInt("spark.dead.worker.persistence", 15)
   private val RECOVERY_MODE = conf.get("spark.deploy.recoveryMode", "NONE")
+  //Executor挂掉时，会尝试一定次数的重启（最多重试10次），超过重试次数就把Application移除
   private val MAX_EXECUTOR_RETRIES = conf.getInt("spark.deploy.maxExecutorRetries", 10)
 
   val workers = new HashSet[WorkerInfo]
@@ -125,6 +129,7 @@ private[deploy] class Master(
   // As a temporary workaround before better ways of configuring memory, we allow users to set
   // a flag that will perform round-robin scheduling across the nodes (spreading out each app
   // among all the nodes) instead of trying to consolidate each app onto a small # of nodes.
+  //默认会把executor分配到尽可能多的worker上，以便更好的利用数据本地性；false则Executor优先分配到一台机器中以提供更高的机器使用率
   private val spreadOutApps = conf.getBoolean("spark.deploy.spreadOut", true)
 
   // Default maxCores for applications that don't specify it (i.e. pass Int.MaxValue)
@@ -152,7 +157,7 @@ private[deploy] class Master(
         self.send(CheckForWorkerTimeOut)
       }
     }, 0, WORKER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-    //启动Rest Server，了解Rest Server！！
+    //启动RestServer，了解RestServer！！
     if (restServerEnabled) {
       val port = conf.getInt("spark.master.rest.port", 6066)
       restServer = Some(new StandaloneRestServer(address.host, port, conf, self, masterUrl))
@@ -586,6 +591,10 @@ private[deploy] class Master(
    * Schedule executors to be launched on the workers.
    * Returns an array containing number of cores assigned to each worker.
    *
+   * 为应用程序分配Executor有两种方式：1、尽可能在集群中所有Worker上分配Executor，这种方式往往会带来潜在的更好
+   * 的数据本地性（这里主要是考虑机器的并发性，顺便带来的副产品：数据本地性）；2、尽可能少的将Executor分配到Worker上
+   * 这样可以充分利用Exector的计算资源，对于计算密集型任务比较适用。
+   *
    * There are two modes of launching executors. The first attempts to spread out an application's
    * executors on as many workers as possible, while the second does the opposite (i.e. launch them
    * on as few workers as possible). The former is usually better for data locality purposes and is
@@ -613,6 +622,7 @@ private[deploy] class Master(
     val numUsable = usableWorkers.length
     val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker
     val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
+    //应用程序可能要求1000个cores，而集群只有100个，因此只能先分配100个，所以要取最小值
     var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)
 
     /** Return whether the specified worker can launch an executor for this app. */
@@ -647,6 +657,8 @@ private[deploy] class Master(
 
           // If we are launching one executor per worker, then every iteration assigns 1 core
           // to the executor. Otherwise, every iteration assigns cores to a new executor.
+          //如果是每个Worker下面只能够为当前的应用程序分配一个Executor的话，每次是分配一个Core！每增加一个core即在Worker的Executor上多分配一个线程用于执行任务！
+          //核心理念：线程的输入输出
           if (oneExecutorPerWorker) {
             assignedExecutors(pos) = 1
           } else {
@@ -676,10 +688,12 @@ private[deploy] class Master(
     for (app <- waitingApps if app.coresLeft > 0) {
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
       // Filter out workers that don't have enough resources to launch an executor
+      //具体分配Executor之前要求Worker必须是ALIVE且必须满足Application对每个Executor的内存和Cores要求并在此基础上进行排序产生计算资源由大到小的usableWorkers数据结构。
       val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
         .filter(worker => worker.memoryFree >= app.desc.memoryPerExecutorMB &&
           worker.coresFree >= coresPerExecutor.getOrElse(1))
         .sortBy(_.coresFree).reverse
+      //在FIFO情况下，默认spreadOutApps来让应用程序尽可能多的运行在所有的Node上
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
 
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
@@ -715,14 +729,17 @@ private[deploy] class Master(
   }
 
   /**
+   * 先启动Driver，才会发生后续的一切的资源调度模式！！
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
    */
   private def schedule(): Unit = {
+    //当前Master必须时Alive时才能进行资源调度，若不是Alive状态则直接返回即Standby Master不会进行资源调度
     if (state != RecoveryState.ALIVE) {
       return
     }
     // Drivers take strict precedence over executors
+    //为什么要把Worker打乱？把Master中保留的集群中所有的Workers信息随机打乱保证每个Worker在一个位置的概率是一致的，便于利用负载均衡。workers为一个HashMap其中存放的是<workerId, WorkInfo>,WorkerInfo的信息<id,host,port,cores,memory,RpcEndpointRef,webUiAddress>处于ALIVE状态的Worker才能参与资源的分配
     val shuffledAliveWorkers = Random.shuffle(workers.toSeq.filter(_.state == WorkerState.ALIVE))
     val numWorkersAlive = shuffledAliveWorkers.size
     var curPos = 0
@@ -732,10 +749,13 @@ private[deploy] class Master(
       // explored all alive workers.
       var launched = false
       var numWorkersVisited = 0
+      //Cluster模式下提交的Driver时，Driver会加入等待列表waitingDrivers中，waitingDrivers为DriverInfo数组，DriverInfo<startTime,id,DriverDescription<jarUrl,mem, cores,supervise, command>,submitDate>，其中supervise若为true，在cluster模式下若Driver执行失败则会重启执行，默认重复执行5次
       while (numWorkersVisited < numWorkersAlive && !launched) {
         val worker = shuffledAliveWorkers(curPos)
         numWorkersVisited += 1
+        //在waitingDrivers中的DriverInfo中的DriverDescription中有Driver要启动时对Worker的内存及Cores要求的内容
         if (worker.memoryFree >= driver.desc.mem && worker.coresFree >= driver.desc.cores) {
+          //若Worker资源符合要求的情况下，在Worker来启动Driver
           launchDriver(worker, driver)
           waitingDrivers -= driver
           launched = true
@@ -749,8 +769,10 @@ private[deploy] class Master(
   private def launchExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
     worker.addExecutor(exec)
+    //准备具体要为当前应用程序分配的Executor信息后，Master要通过远程通信发指令给Worker来具体启动ExecutorBackend进程
     worker.endpoint.send(LaunchExecutor(masterUrl,
       exec.application.id, exec.id, exec.application.desc, exec.cores, exec.memory))
+    //发送消息给DAGScheduler，指示完成资源分配，下一步就可进行运行调度
     exec.application.driver.send(
       ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory))
   }

@@ -150,9 +150,10 @@ class RangePartitioner[K : Ordering : ClassTag, V](
       // This is the sample size we need to have roughly balanced output partitions, capped at 1M.
       // 给定总的数据抽样大小，最多1M的数据量(10^6)，最少20倍的RDD分区数量，也就是每个RDD分区至少抽取40条数据
       val sampleSize = math.min(20.0 * partitions, 1e6)
-      // Assume the input partitions are roughly balanced and over-sample a little bit.
-      // 计算每个分区抽取的数据量大小， 假设输入数据每个分区分布的比较均匀
-      // 对于超大数据集(分区数超过5万的)乘以3会让数据稍微增大一点，对于分区数低于5万的数据集，每个分区抽取数据量为60条也不算多
+      /*Assume the input partitions are roughly balanced and over-sample a little bit.
+        计算每个分区抽取的数据量大小， 假设输入数据每个分区分布的比较均匀
+        对于超大数据集(分区数超过5万的)乘以3会让数据稍微增大一点，对于分区数低于5万的数据集，每个分区抽取数据量为60条也不算多
+        乘3.0的目的：依赖的父RDD数据本身可能是不均匀的，可保证数据量小的分区抽样足够的数据，数据量大分区能够进行二次采样*/
       val sampleSizePerPartition = math.ceil(3.0 * sampleSize / rdd.partitions.size).toInt
       // 从rdd中抽取数据，返回值:(总rdd数据量， Array[分区id，当前分区的数据量，当前分区抽取的数据])
       val (numItems, sketched) = RangePartitioner.sketch(rdd.map(_._1), sampleSizePerPartition)

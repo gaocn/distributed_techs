@@ -157,7 +157,7 @@ private[spark] class TaskSchedulerImpl(
       logInfo("Starting speculative execution thread")
       speculationScheduler.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = Utils.tryOrStopSparkContext(sc) {
-          //通过定时任务检查是否有慢任务，消耗一定性能
+          //开辟一条线程，通过定时任务检查是否有慢任务，消耗一定性能
           checkSpeculatableTasks()
         }
       }, SPECULATION_INTERVAL_MS, SPECULATION_INTERVAL_MS, TimeUnit.MILLISECONDS)

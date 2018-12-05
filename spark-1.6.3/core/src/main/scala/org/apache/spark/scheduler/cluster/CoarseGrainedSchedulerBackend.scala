@@ -30,12 +30,15 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend.ENDPOINT
 import org.apache.spark.util.{ThreadUtils, SerializableBuffer, AkkaUtils, Utils}
 
 /**
- * A scheduler backend that waits for coarse grained executors to connect to it through Akka.
+ * A scheduler backend that waits for coarse grained executors to connect to it through Akka(实际上底层通信采用的是Netty RPC).
  * This backend holds onto each executor for the duration of the Spark job rather than relinquishing
+ * (在应用程序运行期间掌握计算资源Executor，而不是执行完任务后释放然后重新分配————粗粒度分配资源)
  * executors whenever a task is done and asking the scheduler to launch a new executor for
- * each new task. Executors may be launched in a variety of ways, such as Mesos tasks for the
+ * each new task. Executors（实际上应该是ExecutorBackend） may be launched in a variety of ways, such as Mesos tasks for the
  * coarse-grained Mesos mode or standalone processes for Spark's standalone deploy mode
  * (spark.deploy.*).
+ *
+ * CoarseGrainedSchedulerBackend以应用程序的身份去获取资源！
  */
 private[spark]
 class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: RpcEnv)
@@ -57,6 +60,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     conf.getTimeAsMs("spark.scheduler.maxRegisteredResourcesWaitingTime", "30s")
   val createTime = System.currentTimeMillis()
 
+  // holds onto each executor!!
   private val executorDataMap = new HashMap[String, ExecutorData]
 
   // Number of executors requested from the cluster manager that have not registered yet
@@ -78,6 +82,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   // Executors that have been lost, but for which we don't yet know the real exit reason.
   protected val executorsPendingLossReason = new HashSet[String]
 
+  /**
+    * 程序在启动、运行时，真正的Driver级别的RPC通信的核心，包括心跳等都会发送到DriverEndpoint中。
+    * 从运行角度讲，DriverEndpoint为应用程序运行的核心
+    */
   class DriverEndpoint(override val rpcEnv: RpcEnv, sparkProperties: Seq[(String, String)])
     extends ThreadSafeRpcEndpoint with Logging {
 
@@ -90,15 +98,17 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
     protected val addressToExecutorId = new HashMap[RpcAddress, String]
 
+    //线程池
     private val reviveThread =
       ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-revive-thread")
 
     override def onStart() {
-      // Periodically revive offers to allow delay scheduling to work
+      // Periodically revive offers to allow delay scheduling to work 延迟调度
       val reviveIntervalMs = conf.getTimeAsMs("spark.scheduler.revive.interval", "1s")
 
       reviveThread.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = Utils.tryLogNonFatalError {
+          //给Backend启动时，会给自己发送一个ReviveOffers，发起资源调度！
           Option(self).foreach(_.send(ReviveOffers))
         }
       }, 0, reviveIntervalMs, TimeUnit.MILLISECONDS)
@@ -118,8 +128,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                 s"from unknown executor with ID $executorId")
           }
         }
-
       case ReviveOffers =>
+       //该资源调度，不仅仅来自reviveThread的周期调度！
         makeOffers()
 
       case KillTask(taskId, executorId, interruptThread) =>
@@ -191,6 +201,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     // Make fake resource offers on all executors
+    //应用程序第一次启动时为fake，因为还没有运行任务不需要调度资源；而该方法会被反复调用，所以这里注释有点问题！
     private def makeOffers() {
       // Filter out executors under killing
       val activeExecutors = executorDataMap.filterKeys(executorIsAlive)
@@ -320,11 +331,12 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       }
     }
 
-    // TODO (prashant) send conf instead of properties
+    // TODO (prashant) send conf instead of properties  构建Driver Endpoint
     driverEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME, createDriverEndpoint(properties))
   }
 
   protected def createDriverEndpoint(properties: Seq[(String, String)]): DriverEndpoint = {
+    //从运行角度讲，DriverEndpoint为应用程序运行的核心
     new DriverEndpoint(rpcEnv, properties)
   }
 

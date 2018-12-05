@@ -35,6 +35,8 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils, Utils}
  * an app description, and a listener for cluster events, and calls back the listener when various
  * events occur.
  *
+ *AppClient为应用程序与Spark集群通信的接口，因此需要有masterUrls标识通信地址
+ *
  * @param masterUrls Each url should look like spark://host:port.
  */
 private[spark] class AppClient(
@@ -45,6 +47,7 @@ private[spark] class AppClient(
     conf: SparkConf)
   extends Logging {
 
+  //（在HA Spark集群中）实际上发生作用的只有一个，即处于Active状态的Master
   private val masterRpcAddresses = masterUrls.map(RpcAddress.fromSparkURL(_))
 
   private val REGISTRATION_TIMEOUT_SECONDS = 20

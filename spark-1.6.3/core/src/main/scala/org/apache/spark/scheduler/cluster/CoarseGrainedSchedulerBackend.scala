@@ -105,10 +105,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     override def onStart() {
       // Periodically revive offers to allow delay scheduling to work 延迟调度
       val reviveIntervalMs = conf.getTimeAsMs("spark.scheduler.revive.interval", "1s")
-
+      //周期性地检查资源情况并进行资源调用
       reviveThread.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = Utils.tryLogNonFatalError {
-          //给Backend启动时，会给自己发送一个ReviveOffers，发起资源调度！
+          //在SchedulerBackend启动时，周期性给自己发送一个ReviveOffers，发起资源调度！
           Option(self).foreach(_.send(ReviveOffers))
         }
       }, 0, reviveIntervalMs, TimeUnit.MILLISECONDS)
@@ -143,7 +143,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-
+      //ExecutorBackend发送注册Executor的消息
       case RegisterExecutor(executorId, executorRef, hostPort, cores, logUrls) =>
         if (executorDataMap.contains(executorId)) {
           context.reply(RegisterExecutorFailed("Duplicate executor ID: " + executorId))

@@ -144,7 +144,7 @@ private[spark] class CoarseGrainedExecutorBackend(
 private[spark] object CoarseGrainedExecutorBackend extends Logging {
 
   private def run(
-      driverUrl: String,
+      driverUrl: String, //这里的driverUrl不是ClientEndpoint，而是代表DriverEndpoint所在的url
       executorId: String,
       hostname: String,
       cores: Int,
@@ -227,6 +227,8 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
     while (!argv.isEmpty) {
       argv match {
         case ("--driver-url") :: value :: tail =>
+          //这里的driverUrl不是ClientEndpoint，而是代表DriverEndpoint所在的url
+          //注意：这里的driver-url参数是来自
           driverUrl = value
           argv = tail
         case ("--executor-id") :: value :: tail =>

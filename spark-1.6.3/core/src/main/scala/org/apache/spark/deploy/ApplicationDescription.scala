@@ -23,11 +23,11 @@ private[spark] case class ApplicationDescription(
     name: String,
     maxCores: Option[Int],
     memoryPerExecutorMB: Int,
-    command: Command,
+    command: Command, //ExecutorBackend的入口类名
     appUiUrl: String,
-    eventLogDir: Option[URI] = None,
+    eventLogDir: Option[URI] = None, //日志目录
     // short name of compression codec used when writing event logs, if any (e.g. lzf)
-    eventLogCodec: Option[String] = None,
+    eventLogCodec: Option[String] = None, //日志编码器
     coresPerExecutor: Option[Int] = None,
     user: String = System.getProperty("user.name", "<unknown>")) {
 

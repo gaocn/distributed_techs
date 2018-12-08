@@ -101,6 +101,7 @@ private[spark] class SparkDeploySchedulerBackend(
       command, appUIAddress, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor)
     //消息系统，用于与其他消息实体，包括Master进行通信
     //AppClient内部启动ClientEndpoint（继承ThreadSafeRpcEndpoint）实例与Master等消息体通信，从而实现应用程序的注册
+    //AppClient是应用程序的客户端（相对于集群而言），应用程序要提交给集群的Master，总要有谁来代表我，这个AppClient就代表应用程序客户端！
     client = new AppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()
     launcherBackend.setState(SparkAppHandle.State.SUBMITTED)
@@ -198,6 +199,7 @@ private[spark] class SparkDeploySchedulerBackend(
   }
 
   private def notifyContext() = {
+    //信号量
     registrationBarrier.release()
   }
 

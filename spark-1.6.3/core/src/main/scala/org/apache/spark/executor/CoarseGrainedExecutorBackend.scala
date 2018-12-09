@@ -144,6 +144,20 @@ private[spark] class CoarseGrainedExecutorBackend(
 private[spark] object CoarseGrainedExecutorBackend extends Logging {
 
   private def run(
+     /**
+      * 问题：CoarseGrainExecutorBackend在启动的时候会向driverUrl所代表的endpoint进行注册，这个driverUrl代表的endpoint到底实体是谁？（即ClientEndpoint和DriverEndpoint如何诞生如何通信）
+      * 背景：集群启动的时候启动了Master(s)和Workers。
+整个注册过程全流程分析：
+第一步：创建SparkContext，其中会创建DAGScheduler,TaskSchedulerImpl和SparkDeploySchedulerBackend实例，并调用TaskSchedulerImpl.start启动
+第二步：TaskSchedulerImpl.start启动会调用SparkDeploySchedulerBackend.start方法（standalone模式下）
+——（DriverEndpoint的诞生）SparkDeploySchedulerBackend会首先调用父类CoarseGrainedSchedulerBackend.start方法创建DriverEndpoint实例用于进行周期性的资源调度和资源管理（在实例化时根据Spark RPC的消息工作机制会调用生命周期方法onStart，该方法会周期性给自己发送RiverOffer空消息用于Make fake resource offers on all executors）；
+——（ClientEndpoint的诞生）然后调用SparkDeploySchedulerBackend本身的start方法创建AppClient实例，在AppClient实例内部会创建ClientEndpoint实例并调用RPC消息体的onStart方法用于向Masters注册应用程序。
+——Master如何向Worker发送指令启动CoarseGrainedExecutorBackend？Master完成应用程序注册后会调用schedule方法，该方法会调用startExecutorsOnWorkers方法，其中会调用scheduleExecutorsOnWorkers和allocateWorkerResourceToExecutor方法，在allocateWorkerResourceToExecutor方法中会调用launchExecutor方法发送两条消息：LaunchExecutor(给Worker)和ExecutorAdded（给ClientEndpoint）。当Worker接收到LaunchExecutor后会调用创建ExecutorRunner内部通过线程方式创建CoarseGrainExecutorBackend进程其中的Executor线程池用于执行具体任务，最后Worker发送消息ExecutorStateChanged给Master通知Executor状态变化；当ClientEndpoint接收到ExecutorAdded消息形式上Executor添加成功（之所以称为因为此时是Master把Executor的信息交给ClientEndpoint，此时CoarseGrainedExecutorBackend并没有实例化，真正实例化过程是Worker进程接收到LaunchExecutor后完成的！）。
+
+第三步：启动CoarseGrainExecutorBackend的过程分析
+在CoarseGrainExecutorBackend启动的时候，main方法会通过args match获得"driver-url"参数，在main中会调用run方法其中会根据"driver-url"获取RPCEndpoint的代理句柄，而此时CoarseGrainExecutorBackend在启动后最终会注册给"driver-url"所代表的远程RPCEndpoint对象实例。而"--driver-url"参数是在SparkDeploySchedulerBackend.start方法中设置的，并由AppClient在注册应用程序是传送给Master，而后由Master传送给Worker来创建CoarseGrainExecutorBackend时用的，其值为CoarseGrainedSchedulerBackend.ENDPOINT_NAME="CoarseGrainedScheduler"，由于driverEndpoint在rpcEnv中注册的Endpoint名称为"CoarseGrainedScheduler"，而clientEndpoint在rpcEnv中注册的名称为"AppClient"，所以CoarseGrainExecutorBackend要通信的对象是driverEndpoint，而不是clientEndpoint。
+第四步：在CoarseGrainExecutorBackend向DriverEndpoint发送RegiesterExecutor消息后，并接收DriverEndpoint回复的RegisteredExecutor后就会完成Executor线程池的创建。
+      */
       driverUrl: String, //这里的driverUrl不是ClientEndpoint，而是代表DriverEndpoint所在的url
       executorId: String,
       hostname: String,
@@ -168,6 +182,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         executorConf,
         new SecurityManager(executorConf),
         clientMode = true)
+      //指向DriverEndpoint所代表的RPCEndpoint
       val driver = fetcher.setupEndpointRefByURI(driverUrl)
       val props = driver.askWithRetry[Seq[(String, String)]](RetrieveSparkProps) ++
         Seq[(String, String)](("spark.app.id", appId))

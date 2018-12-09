@@ -62,6 +62,8 @@ private[spark] class SparkDeploySchedulerBackend(
     launcherBackend.connect() //
 
     // The endpoint for executors to talk to us
+    //由AppClient在注册应用程序是传送给Master，而后由Master传送给Worker来创建CoarseGrainExecutorBackend时用的
+    //而此时CoarseGrainExecutorBackend在启动后最终会注册给driverUrl所代表的远程RPCEndpoint对象实例
     val driverUrl = rpcEnv.uriOf(SparkEnv.driverActorSystemName,
       RpcAddress(sc.conf.get("spark.driver.host"), sc.conf.get("spark.driver.port").toInt),
       CoarseGrainedSchedulerBackend.ENDPOINT_NAME)

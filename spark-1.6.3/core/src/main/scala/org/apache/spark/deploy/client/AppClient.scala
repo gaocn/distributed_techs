@@ -185,7 +185,7 @@ private[spark] class AppClient(
         // 2. Receive multiple RegisteredApplication from different masters because the master is
         // changing.
         //这两个问题实际上所有分布式系统设计中都没有解决，简单方式是维护一个集群级别的全局变量！
-        //但是这样做比较多事！！ 例如C语言为什么总有指针溢出，为什么做边界检查？ --》因为效率原因！！
+        //但是这样做比较多事！！ 例如C语言为什么总有指针溢出，为什么做边界检查？ --》因为效率原因！！！
         appId.set(appId_)
         registered.set(true)
         master = Some(masterRef)

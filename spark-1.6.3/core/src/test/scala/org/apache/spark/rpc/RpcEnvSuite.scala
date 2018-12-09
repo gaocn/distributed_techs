@@ -38,6 +38,7 @@ import org.apache.spark.util.Utils
 
 /**
  * Common tests for an RpcEnv implementation.
+ * RPCSuite 用于RPCEnv框架的测试
  */
 abstract class RpcEnvSuite extends SparkFunSuite with BeforeAndAfterAll {
 

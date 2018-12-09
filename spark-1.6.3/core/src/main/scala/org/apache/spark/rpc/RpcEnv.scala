@@ -32,6 +32,7 @@ import org.apache.spark.util.{RpcUtils, Utils}
  */
 private[spark] object RpcEnv {
 
+  //工厂方法，根据反射创建RPCEndpoint
   private def getRpcEnvFactory(conf: SparkConf): RpcEnvFactory = {
     val rpcEnvNames = Map(
       "akka" -> "org.apache.spark.rpc.akka.AkkaRpcEnvFactory",
@@ -39,7 +40,7 @@ private[spark] object RpcEnv {
     val rpcEnvName = conf.get("spark.rpc", "netty")
     val rpcEnvFactoryClassName = rpcEnvNames.getOrElse(rpcEnvName.toLowerCase, rpcEnvName)
     Utils.classForName(rpcEnvFactoryClassName).newInstance().asInstanceOf[RpcEnvFactory]
-  }
+}
 
   def create(
       name: String,
@@ -56,6 +57,15 @@ private[spark] object RpcEnv {
 
 
 /**
+ *
+ * 提供RPC通讯框架的众多功能，
+ * RpcEndpoint向RPCEnv上下文注册用于接收消息，客户端通过RpcEndpointRef发送消息到RPCEnv，RPCEnv上下文接收到消息会
+ * 将其路由到具体的本地货远程RpcEndpoint实体。RpcEnv有两种：
+ * 1、NettyRpcEnv，较AkkaRpcEnv更高效，底层许多是基于C/C++实现的native方法，效率更高；
+ * 2、AkkaRpcEnv，基于scala开发，底层仍然是基于JVM；
+ *
+ * RPCEnv负责管理RPCEndpoint的生命周期
+ *
  * An RPC environment. [[RpcEndpoint]]s need to register itself with a name to [[RpcEnv]] to
  * receives messages. Then [[RpcEnv]] will process messages sent from [[RpcEndpointRef]] or remote
  * nodes, and deliver them to corresponding [[RpcEndpoint]]s. For uncaught exceptions caught by
@@ -106,6 +116,8 @@ private[spark] abstract class RpcEnv(conf: SparkConf) {
     setupEndpointRefByURI(uriOf(systemName, address, endpointName))
   }
 
+  // RPCEnv负责管理RPCEndpoint的生命周期
+
   /**
    * Stop [[RpcEndpoint]] specified by `endpoint`.
    */
@@ -154,6 +166,7 @@ private[spark] abstract class RpcEnv(conf: SparkConf) {
 }
 
 /**
+ * 分布式文件服务器
  * A server used by the RpcEnv to server files to other processes owned by the application.
  *
  * The file server can return URIs handled by common libraries (such as "http" or "hdfs"), or

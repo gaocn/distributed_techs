@@ -1147,6 +1147,7 @@ private[deploy] object Master extends Logging {
   }
 
   /**
+   * Master RPCEndpoint的创建：利用RpcEnv.create工厂方法通过反射机制创建RPCEndpoint实例
    * Start the Master and return a three tuple of:
    *   (1) The Master RpcEnv
    *   (2) The web UI bound port

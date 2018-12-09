@@ -29,6 +29,10 @@ private[spark] trait RpcEnvFactory {
 }
 
 /**
+ * RPCEndpoint和RPCEndpointRef构成代理模式！
+ *
+ * RPC消息循环体，继承RPCPoint的消息循环体可以接收其他消息循环体发送的消息，例如：Master、Worker
+ *
  * An end point for the RPC that defines what functions to trigger given a message.
  *
  * It is guaranteed that `onStart`, `receive` and `onStop` will be called in sequence.
@@ -51,6 +55,8 @@ private[spark] trait RpcEndpoint {
   val rpcEnv: RpcEnv
 
   /**
+   * 其他消息循环体发送消息需要用到RpcEndpointRef，RpcEndpointRef用于发送消息（代理模式）
+   *
    * The [[RpcEndpointRef]] of this [[RpcEndpoint]]. `self` will become valid when `onStart` is
    * called. And `self` will become `null` when `onStop` is called.
    *
@@ -90,11 +96,11 @@ private[spark] trait RpcEndpoint {
    * Invoked when `remoteAddress` is connected to the current node.
    */
   def onConnected(remoteAddress: RpcAddress): Unit = {
-    // By default, do nothing.
+    // By default, do nothing. 客户端连接上时会被调用
   }
 
   /**
-   * Invoked when `remoteAddress` is lost.
+   * Invoked when `remoteAddress` is lost. 网络故障
    */
   def onDisconnected(remoteAddress: RpcAddress): Unit = {
     // By default, do nothing.
@@ -144,5 +150,7 @@ private[spark] trait RpcEndpoint {
  *
  * However, there is no guarantee that the same thread will be executing the same
  * [[ThreadSafeRpcEndpoint]] for different messages.
+ *
+ * 基于接口抽象一个层次
  */
 private[spark] trait ThreadSafeRpcEndpoint extends RpcEndpoint

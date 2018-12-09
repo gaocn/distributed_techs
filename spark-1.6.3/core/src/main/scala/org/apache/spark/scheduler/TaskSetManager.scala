@@ -35,6 +35,12 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{Clock, SystemClock, Utils}
 
 /**
+ * 延迟调度和数据本地性紧密相关，做调度时所有的努力都是尽量保证数据在当前机器的内存中，这样就不会存在网络IO、磁盘IO。所以所有的调度都是为了追求这样的一种本地性，在这个基础之上就产生了延迟调度。延迟调度的目的就是为了最大化的本地性而进行的延迟或等待。
+ * 延迟调度：在进行任务调度时，假设数据在当前节点的内存中，但是要执行与该数据相关的任务却没有资源，因此只能延迟或等待任务被分配到该节点上。
+ * Task要工作要依赖TaskSetManager，TaskSetManager负责TaskSet的本地性调度。
+ *
+ * 延迟调度：会延迟任务调度时间，但有超时机制。 优化方法：数据进入内存时，多存储几个副本，但是会消耗内存资源！
+ *
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
  * each task, retries tasks if they fail (up to a limited number of times), and
  * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
@@ -501,9 +507,10 @@ private[spark] class TaskSetManager(
 
   /**
    * Get the level we can launch tasks according to delay scheduling, based on current wait time.
+   * 获取能够进行延迟调度的Level
    */
   private def getAllowedLocalityLevel(curTime: Long): TaskLocality.TaskLocality = {
-    // Remove the scheduled or finished tasks lazily
+    // Remove the scheduled or finished tasks lazily 在获取任务的本地级别前，需要排除已经执行完成的任务
     def tasksNeedToBeScheduledFrom(pendingTaskIds: ArrayBuffer[Int]): Boolean = {
       var indexOffset = pendingTaskIds.size
       while (indexOffset > 0) {
@@ -520,6 +527,7 @@ private[spark] class TaskSetManager(
     // Walk through the list of tasks that can be scheduled at each location and returns true
     // if there are any tasks that still need to be scheduled. Lazily cleans up tasks that have
     // already been scheduled.
+    //检查任务能否在特定本地性基础之上进行调度
     def moreTasksToRunIn(pendingTasks: HashMap[String, ArrayBuffer[Int]]): Boolean = {
       val emptyKeys = new ArrayBuffer[String]
       val hasTasks = pendingTasks.exists {
@@ -553,7 +561,7 @@ private[spark] class TaskSetManager(
         currentLocalityIndex += 1
       } else if (curTime - lastLaunchTime >= localityWaits(currentLocalityIndex)) {
         // Jump to the next locality level, and reset lastLaunchTime so that the next locality
-        // wait timer doesn't immediately expire
+        // wait timer doesn't immediately expire 超时后本地性自动降级
         lastLaunchTime += localityWaits(currentLocalityIndex)
         logDebug(s"Moving to ${myLocalityLevels(currentLocalityIndex + 1)} after waiting for " +
           s"${localityWaits(currentLocalityIndex)}ms")

@@ -114,7 +114,7 @@ private[spark] class TaskSchedulerImpl(
 
   var schedulableBuilder: SchedulableBuilder = null
   var rootPool: Pool = null
-  // default scheduler is FIFO
+  // default scheduler is FIFO，默认创建任务调度模式为：FIFO，调度模式涉及资源是如何分配！
   private val schedulingModeConf = conf.get("spark.scheduler.mode", "FIFO")
   val schedulingMode: SchedulingMode = try {
     SchedulingMode.withName(schedulingModeConf.toUpperCase)
@@ -132,7 +132,7 @@ private[spark] class TaskSchedulerImpl(
 
   def initialize(backend: SchedulerBackend) {
     this.backend = backend
-    // temporarily set rootPool name to empty
+    // temporarily set rootPool name to empty 树根不会参与排序，根中属性没有意义因此设置为空
     rootPool = new Pool("", schedulingMode, 0, 0)
     schedulableBuilder = {
       schedulingMode match {

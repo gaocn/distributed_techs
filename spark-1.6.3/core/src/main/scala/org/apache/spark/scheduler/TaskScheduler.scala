@@ -32,14 +32,19 @@ import org.apache.spark.storage.BlockManagerId
  *
  * 每一个具体的TaskScheduler负责一个具体的Mapper或Reducer中的任务调度！
  *1、TaskScheduler是在SparkContext中被创建；
- *2、
  */
 private[spark] trait TaskScheduler {
 
   private val appId = "spark-application-" + System.currentTimeMillis
 
+  /**任务调度的队列
+    * Pool实例为树状结构，其中Pool为分支或根节点，TaskSetManager为叶子节点
+    * （1）在FIFO调度模式下，Pool下面就是TaskSetManager，即具体要执行的任务并产生具体的任务调度；
+    * （2）在FAIR调度模式下，Pool下面继续是Pool，而在Pool下面的Pool里面才是具体的TaskSetManager
+    * 从调度模型的角度看，可以解释为什么FIFO模式下可以获取尽可能多的资源，FAIR模式下的资源调度情况！
+    */
   def rootPool: Pool
-
+  //调度模式涉及资源是如何分配！
   def schedulingMode: SchedulingMode
 
   def start(): Unit

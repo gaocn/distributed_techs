@@ -43,6 +43,6 @@ private[spark] trait Schedulable {
   def removeSchedulable(schedulable: Schedulable): Unit
   def getSchedulableByName(name: String): Schedulable
   def executorLost(executorId: String, host: String, reason: ExecutorLossReason): Unit
-  def checkSpeculatableTasks(): Boolean
+  def checkSpeculatableTasks(): Boolean //任务推测，用于处理慢任务
   def getSortedTaskSetQueue: ArrayBuffer[TaskSetManager]
 }

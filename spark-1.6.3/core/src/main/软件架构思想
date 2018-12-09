@@ -1,0 +1,6 @@
+现在的软件架构走向：三角趋势（Driver引擎+Interface接口+Tire工程师实现的接口--轮胎），框架由EIT构成，工程师写代码就是造轮胎，而轮胎是几乎没有什么技术含量的。工程师实现的都是基于引擎和接口之上，所以含金量不是很大。
+底层驱动：框架通过接口调用工程师写的代码--》Tire
+
+【以spark为例】
+Spark架构的构成：SparkContext--》Driver、Interface、Tire。
+Spark应用程序分为两部分：driver和executors内部关于rdd的处理，spark要运行job一定要有SparkContext，因为SparkContext是工程师写的程序与Spark集群交互的唯一入口，其中SparkContext中的Driver负责和集群交互。而Driver中的什么和集群交互：调度器（框架层面），框架通过接口调用工程师写的代码实现功能。

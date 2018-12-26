@@ -144,6 +144,21 @@ private[deploy] class ExecutorRunner(
         memory, sparkHome.getAbsolutePath, substituteVariables)
       val command = builder.command()
       val formattedCommand = command.asScala.mkString("\"", "\" \"", "\"")
+
+      /**
+      Launch command:
+      "/var/e3capp/jdk1.8.0_121/bin/java" "-cp"
+      "/var/e3capp/spark-2.3.1-bin-hadoop2.6/conf/:/var/e3capp/spark-2.3.1-bin-hadoop2.6/jars/\*:/var/e3capp/hadoop-2.6.5/etc/hadoop/"
+      "-Xmx16384M"
+      "-Dspark.driver.port=46720"
+      "org.apache.spark.executor.CoarseGrainedExecutorBackend"
+      "--driver-url" "spark://CoarseGrainedScheduler@HQxTSL-150174:46720"
+      "--executor-id" "0"
+      "--hostname" "10.230.150.176"
+      "--cores" "56"
+      "--app-id" "app-20181126170110-0036"
+      "--worker-url" "spark://Worker@10.230.150.176:48655"
+        */
       logInfo(s"Launch command: $formattedCommand")
 
       builder.directory(executorDir)

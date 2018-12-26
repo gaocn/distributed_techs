@@ -199,11 +199,14 @@ private[deploy] class DriverRunner(
       }
 
       val processStart = clock.getTimeMillis()
+      //DriverRunner启动进程是通过ProcessBuilder中的process.get.waitFor阻塞方法来完成的，当返回时就说明出现问题，接下来就需要检查是否需要重启Driver。（
       val exitCode = process.get.waitFor()
       if (clock.getTimeMillis() - processStart > successfulRunDuration * 1000) {
         waitSeconds = 1
       }
 
+      //Driver失败重启满足条件：1、在cluster模式下；2、设置标志位DriverDescription.supervise=True
+      //Worker负责在Driver失败后重新启动Driver！！！
       if (supervise && exitCode != 0 && !killed) {
         logInfo(s"Command exited with status $exitCode, re-launching after $waitSeconds s.")
         sleeper.sleep(waitSeconds)

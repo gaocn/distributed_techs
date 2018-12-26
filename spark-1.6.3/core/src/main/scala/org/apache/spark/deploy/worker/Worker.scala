@@ -190,6 +190,17 @@ private[deploy] class Worker(
     shuffleService.startIfEnabled()
     webUi = new WorkerWebUI(this, workDir, webUiPort)
     webUi.bind()
+/**
+  * registerWithMaster()并启动周期任务检查是否注册成功
+  *   --》tryRegisterAllMasters()
+  *     --》registerWithMaster(masterEndpoint)
+  *     |  |--》注册成功 handleRegisterResponse(r)，启动心跳机制、清理Work下已运行完毕的App数据机制
+  *     |  |--》注册未成功，超时发送ReregisterWithMaster消息进行重试
+  *     |     --》reregisterWithMaster()
+  *     |     --》registerWithMaster(masterEndpoint)
+  *     |               |
+  *     ----------------|
+  */
     //向Master注册
     registerWithMaster()
 
@@ -362,10 +373,11 @@ private[deploy] class Worker(
           System.exit(1)
       }(ThreadUtils.sameThread)
   }
-
+  //向Master注册成功后的操作
   private def handleRegisterResponse(msg: RegisterWorkerResponse): Unit = synchronized {
     msg match {
       case RegisteredWorker(masterRef, masterWebUiUrl) =>
+        //Successfully registered with master spark://HQxTSL-150175:7077
         logInfo("Successfully registered with master " + masterRef.address.toSparkURL)
         registered = true
         changeMaster(masterRef, masterWebUiUrl)
@@ -516,6 +528,7 @@ private[deploy] class Worker(
 
     case LaunchDriver(driverId, driverDesc) => {
       logInfo(s"Asked to launch driver $driverId")
+      //drivers数据结构为HashMap,key为driverId，value为DriverRunner实例，因为Worker下可能启动多个Driver，需要根据Driver的ID管理具体的DriverRunner，DriverRunner内部通过线程方式启动另外一个进程。因此DriverRunner可以理解为Driver所在进程中Driver本身的Proxy（代理模式）
       val driver = new DriverRunner(
         conf,
         driverId,
@@ -526,6 +539,7 @@ private[deploy] class Worker(
         workerUri,
         securityMgr)
       drivers(driverId) = driver
+      //启动Driver所在的进程
       driver.start()
 
       coresUsed += driverDesc.cores

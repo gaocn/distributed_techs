@@ -566,12 +566,14 @@ private[deploy] class Master(
     state = RecoveryState.COMPLETING_RECOVERY
 
     // Kill off any workers and apps that didn't respond to us.
+    //由于Spark的容错机制，对于没有响应的工作会进行重新计算！！
     workers.filter(_.state == WorkerState.UNKNOWN).foreach(removeWorker)
     apps.filter(_.state == ApplicationState.UNKNOWN).foreach(finishApplication)
 
     // Reschedule drivers which were not claimed by any workers
     drivers.filter(_.worker.isEmpty).foreach { d =>
       logWarning(s"Driver ${d.id} was not found after master recovery")
+      //若是以集群方式运行，并且执行spark-submit的方式为supervise，则在Driver失败后，可以重启Driver。
       if (d.desc.supervise) {
         logWarning(s"Re-launching ${d.id}")
         relaunchDriver(d)

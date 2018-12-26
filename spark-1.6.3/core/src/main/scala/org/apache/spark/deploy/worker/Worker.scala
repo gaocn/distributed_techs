@@ -194,7 +194,7 @@ private[deploy] class Worker(
   * registerWithMaster()并启动周期任务检查是否注册成功
   *   --》tryRegisterAllMasters()
   *     --》registerWithMaster(masterEndpoint)
-  *     |  |--》注册成功 handleRegisterResponse(r)，启动心跳机制、清理Work下已运行完毕的App数据机制
+  *     |  |--》注册成功 handleRegisterResponse(r)，启动心跳机制、清理Work下已运行完毕的App数据机制 --》changeMaster更新连接状态，取消尝试注册机制
   *     |  |--》注册未成功，超时发送ReregisterWithMaster消息进行重试
   *     |     --》reregisterWithMaster()
   *     |     --》registerWithMaster(masterEndpoint)
@@ -407,8 +407,15 @@ private[deploy] class Worker(
     }
   }
 
+  /**
+    * 1、处理由于启动、重启、网络异常等引起的，需要向Master注册的相关工作；
+    * 2、启动Executor、关闭Executor、Executor状态变动；
+    * 3、启动Driver、关闭Driver、Driver状态变动；
+    * 4、应用程序执行完毕：清理临时数据文件、ShuffleMapTask的数据文件；
+    */
   override def receive: PartialFunction[Any, Unit] = synchronized {
     case SendHeartbeat =>
+      //发送的heartbeat中包含Worker的Mem、CORE信息！！？？
       if (connected) { sendToMaster(Heartbeat(workerId, self)) }
 
     case WorkDirCleanup =>
@@ -508,10 +515,11 @@ private[deploy] class Worker(
           }
         }
       }
-
+    //通知Master更新状态,如果Executor任务处理完成，则做清理、资源回收工作
     case executorStateChanged @ ExecutorStateChanged(appId, execId, state, message, exitStatus) =>
       handleExecutorStateChanged(executorStateChanged)
 
+    //关闭ExecutorRunner启动的ExecutorBackend进程
     case KillExecutor(masterUrl, appId, execId) =>
       if (masterUrl != activeMasterUrl) {
         logWarning("Invalid Master (" + masterUrl + ") attempted to launch executor " + execId)
@@ -599,6 +607,7 @@ private[deploy] class Worker(
           Utils.deleteRecursively(new File(dir))
         }
       }
+      //应用执行完后，需要清理ShuffleMapTask保存数据的文件
       shuffleService.applicationRemoved(id)
     }
   }

@@ -35,6 +35,8 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils, Utils}
  * an app description, and a listener for cluster events, and calls back the listener when various
  * events occur.
  *
+ *AppClient为应用程序与Spark集群通信的接口，因此需要有masterUrls标识通信地址
+ *
  * @param masterUrls Each url should look like spark://host:port.
  */
 private[spark] class AppClient(
@@ -45,6 +47,7 @@ private[spark] class AppClient(
     conf: SparkConf)
   extends Logging {
 
+  //（在HA Spark集群中）实际上发生作用的只有一个，即处于Active状态的Master
   private val masterRpcAddresses = masterUrls.map(RpcAddress.fromSparkURL(_))
 
   private val REGISTRATION_TIMEOUT_SECONDS = 20
@@ -52,11 +55,14 @@ private[spark] class AppClient(
 
   private val endpoint = new AtomicReference[RpcEndpointRef]
   private val appId = new AtomicReference[String]
-  private val registered = new AtomicBoolean(false)
+  private val registered = new AtomicBoolean(false) //是否被注册
 
+  /**
+    * AppClient有一个内部类
+    */
   private class ClientEndpoint(override val rpcEnv: RpcEnv) extends ThreadSafeRpcEndpoint
     with Logging {
-
+    //连接的Master
     private var master: Option[RpcEndpointRef] = None
     // To avoid calling listener.disconnected() multiple times
     private var alreadyDisconnected = false
@@ -64,6 +70,11 @@ private[spark] class AppClient(
     private val alreadyDead = new AtomicBoolean(false)
     private val registerMasterFutures = new AtomicReference[Array[JFuture[_]]]
     private val registrationRetryTimer = new AtomicReference[JScheduledFuture[_]]
+
+    /**
+      * 所谓的高效程序：从物理层面讲就是消息驱动的多线程通信模式 + 缓存！！！
+      * Spark以前的代码不是通过线程池进行注册的，而是直接注册（占用主线程，接收消息时会被阻塞）。
+      */
 
     // A thread pool for registering with masters. Because registering with a master is a blocking
     // action, this thread pool must be able to create "masterRpcAddresses.size" threads at the same
@@ -95,17 +106,21 @@ private[spark] class AppClient(
 
     /**
      *  Register with all masters asynchronously and returns an array `Future`s for cancellation.
+     *  为什么用线程池而不是用线程？可以确保所有Master的注册程序同时发起！
      */
     private def tryRegisterAllMasters(): Array[JFuture[_]] = {
-      for (masterAddress <- masterRpcAddresses) yield {
+      for (masterAddress <- masterRpcAddresses) yield { //yield生成一个Array集合
         registerMasterThreadPool.submit(new Runnable {
           override def run(): Unit = try {
-            if (registered.get) {
+            if (registered.get) { //若已经注册，则退出，只能注册一个Master
               return
             }
             logInfo("Connecting to master " + masterAddress.toSparkURL + "...")
+            //代理模式，获取Master远程句柄的引用
             val masterRef =
               rpcEnv.setupEndpointRef(Master.SYSTEM_NAME, masterAddress, Master.ENDPOINT_NAME)
+            //注册完成后发送消息：应用程序注册
+            //为什么发送消息只有两个参数？第一个是应用程序本身，第二个参数为ClientEndpoint，为什么传递这个参数？因为Master要回复消息！
             masterRef.send(RegisterApplication(appDescription, self))
           } catch {
             case ie: InterruptedException => // Cancelled
@@ -116,22 +131,30 @@ private[spark] class AppClient(
     }
 
     /**
+     * 异步注册（分布式即代表：消息通信+异步）
      * Register with all masters asynchronously. It will call `registerWithMaster` every
      * REGISTRATION_TIMEOUT_SECONDS seconds until exceeding REGISTRATION_RETRIES times.
+     * 连上之后，其余工作就由Master指挥，所以其他正在注册工作就可以被取消。
      * Once we connect to a master successfully, all scheduling work and Futures will be cancelled.
      *
      * nthRetry means this is the nth attempt to register with master.
      */
     private def registerWithMaster(nthRetry: Int) {
+      //JFuture的原子引用，表示一系列进行实际注册的线程结果
       registerMasterFutures.set(tryRegisterAllMasters())
+      //定时器，按照固定频率（超时时间）循环调用注册程序
       registrationRetryTimer.set(registrationRetryThread.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = {
           if (registered.get) {
+            //连接成功，取消其他注册程序
             registerMasterFutures.get.foreach(_.cancel(true))
+            //关闭线程池
             registerMasterThreadPool.shutdownNow()
           } else if (nthRetry >= REGISTRATION_RETRIES) {
+            //重试次数超过3次，则表示Master没有响应
             markDead("All masters are unresponsive! Giving up.")
           } else {
+            //若没有重试超过3次，则要么正在重试连接
             registerMasterFutures.get.foreach(_.cancel(true))
             registerWithMaster(nthRetry + 1)
           }
@@ -161,6 +184,8 @@ private[spark] class AppClient(
         // RegisteredApplications due to an unstable network.
         // 2. Receive multiple RegisteredApplication from different masters because the master is
         // changing.
+        //这两个问题实际上所有分布式系统设计中都没有解决，简单方式是维护一个集群级别的全局变量！
+        //但是这样做比较多事！！ 例如C语言为什么总有指针溢出，为什么做边界检查？ --》因为效率原因！！！
         appId.set(appId_)
         registered.set(true)
         master = Some(masterRef)

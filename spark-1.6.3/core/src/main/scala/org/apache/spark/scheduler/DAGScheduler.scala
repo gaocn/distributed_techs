@@ -430,6 +430,23 @@ class DAGScheduler(
     parents
   }
 
+  /**
+    * 从后往前推依赖关系，算当前RDD必须算父RDD，这就是函数展开的过程，表面看是RDD的依赖关系，事实上这就是函数展开的过程。
+    * 假设有100个RDD的算子（函数）步骤，而且都是窄依赖的话，实际上现在是一个函数。
+    * 通过依赖关系隐性的完成了算子的合并，因为它只需要关注它的父RDD是谁，计算的时候由于它要从前往后计算，而实际上是从后往
+    * 前推的一个过程，所以这就完成了算子的合并和计算。这就是pipeline，使我们要的结果。
+    *
+    * 展开的过程其实也是合并的过程，因为它是pipeline！
+    *
+    * 所谓pipeline计算是指由很多计算步骤但其实很多个步骤是作用于一份数据。若产生多份数据就不能称为pipeline。
+    *
+    * 数据相当一个管道，算子在pipeline中流动进行第一步、第二步...计算，数据还是那些数据，pipeline只是计算的链条，因为实在同一个stage内部（窄依赖），所以它就正常完成了合并的过程，展开的过程就是合并的过程！
+    *
+    *【这是Spark比Hadoop快的基本性原因，Hadoop没有算子的pipeline而Spark有】
+    *
+    * 一个Stage就是从最后一个RDD出发的，Spark计算是以Partition粒度为单位，所以一个Stage执行完成后才能进行下一个Stage的计算。
+    * 而Partition到底是什么粒度，这个是可以自定义的，可以将Partition作为一条记录，也可以作为多条记录的集合。所以Spark计算可以是细粒度计算，也可以是粗粒度计算，默认Spark是粗粒度计算，Partition内部是以记录集合为单位计算的。（获取数据是以Partition为单位，而操作func是一条一条操作的）
+    */
   private def getMissingParentStages(stage: Stage): List[Stage] = {
     val missing = new HashSet[Stage]
     val visited = new HashSet[RDD[_]]
@@ -580,6 +597,10 @@ class DAGScheduler(
     assert(partitions.size > 0)
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
     val waiter = new JobWaiter(this, jobId, partitions.size, resultHandler)
+
+    /**
+      * func2为第一个
+      */
     eventProcessLoop.post(JobSubmitted(
       jobId, rdd, func2, partitions.toArray, callSite, waiter,
       SerializationUtils.clone(properties)))
@@ -932,6 +953,7 @@ class DAGScheduler(
   }
 
   /** Called when stage's parents are available and we can now do its task. */
+  //stage的构建：从最后一个Action往前推。事实上最后一个Action计算动作不算是Stage内部的工作！！
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
@@ -992,7 +1014,7 @@ class DAGScheduler(
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
-    var taskBinary: Broadcast[Array[Byte]] = null
+    var taskBinary: Broadcast[Array[Byte]] = null //用于把作业中运行的Stage内部的Tasks（序列化后）广播出去给ExecutorBackend
     try {
       // For ShuffleMapTask, serialize and broadcast (rdd, shuffleDep).
       // For ResultTask, serialize and broadcast (rdd, func).

@@ -26,7 +26,14 @@ import org.apache.spark.deploy.client.{AppClient, AppClientListener}
 import org.apache.spark.launcher.{LauncherBackend, SparkAppHandle}
 import org.apache.spark.scheduler._
 import org.apache.spark.util.Utils
-
+/**
+  * SparkDeploySchedulerBackend以应用程序的身份去获取资源！
+  *
+  * 根据参数可以判断：
+  *  -- SparkDeploySchedulerBackend是从属于TaskSchedulerImpl实例的，TaskSchedulerImpl是底层调度器它负责具体的一个Stage内部的任务的集合TaskSet的具体的运行，运行就需要资源因此需要通过SparkDeploySchedulerBackend来负责具体的集群资源的获取和调度（从应用程序层面看）。
+  *
+  * 这里没有写注释，则默认与CoarseGrainedSchedulerBackend功能一致（因为CoarseGrainedSchedulerBackend中写了注释）
+  */
 private[spark] class SparkDeploySchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext,
@@ -49,11 +56,14 @@ private[spark] class SparkDeploySchedulerBackend(
   private val maxCores = conf.getOption("spark.cores.max").map(_.toInt)
   private val totalExpectedCores = maxCores.getOrElse(0)
 
+
   override def start() {
     super.start()
-    launcherBackend.connect()
+    launcherBackend.connect() //
 
     // The endpoint for executors to talk to us
+    //由AppClient在注册应用程序是传送给Master，而后由Master传送给Worker来创建CoarseGrainExecutorBackend时用的
+    //而此时CoarseGrainExecutorBackend在启动后最终会注册给driverUrl所代表的远程RPCEndpoint对象实例
     val driverUrl = rpcEnv.uriOf(SparkEnv.driverActorSystemName,
       RpcAddress(sc.conf.get("spark.driver.host"), sc.conf.get("spark.driver.port").toInt),
       CoarseGrainedSchedulerBackend.ENDPOINT_NAME)
@@ -84,12 +94,16 @@ private[spark] class SparkDeploySchedulerBackend(
     // Start executors with a few necessary configs for registering with the scheduler
     val sparkJavaOpts = Utils.sparkJavaOpts(conf, SparkConf.isExecutorStartupConf)
     val javaOpts = sparkJavaOpts ++ extraJavaOpts
+    //ExecutorBackend具体运行实例，指定Executor所在进程的入口类的名称
     val command = Command("org.apache.spark.executor.CoarseGrainedExecutorBackend",
       args, sc.executorEnvs, classPathEntries ++ testingClassPath, libraryPathEntries, javaOpts)
     val appUIAddress = sc.ui.map(_.appUIAddress).getOrElse("")
     val coresPerExecutor = conf.getOption("spark.executor.cores").map(_.toInt)
     val appDesc = new ApplicationDescription(sc.appName, maxCores, sc.executorMemory,
       command, appUIAddress, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor)
+    //消息系统，用于与其他消息实体，包括Master进行通信
+    //AppClient内部启动ClientEndpoint（继承ThreadSafeRpcEndpoint）实例与Master等消息体通信，从而实现应用程序的注册
+    //AppClient是应用程序的客户端（相对于集群而言），应用程序要提交给集群的Master，总要有谁来代表我，这个AppClient就代表应用程序客户端！
     client = new AppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()
     launcherBackend.setState(SparkAppHandle.State.SUBMITTED)
@@ -187,6 +201,7 @@ private[spark] class SparkDeploySchedulerBackend(
   }
 
   private def notifyContext() = {
+    //信号量
     registrationBarrier.release()
   }
 

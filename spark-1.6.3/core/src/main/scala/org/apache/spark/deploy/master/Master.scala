@@ -254,7 +254,7 @@ private[deploy] class Master(
       System.exit(0)
     }
     //客户端注册程序
-    case RegisterApplication(description, driver) => {
+    case RegisterApplication(description, driver) => { //注意：这里的driver为ClientEndpoint不是DriverEndpoint!!
       // TODO Prevent repeated registrations from some driver
       if (state == RecoveryState.STANDBY) {
         // ignore, don't send response
@@ -265,6 +265,7 @@ private[deploy] class Master(
         logInfo("Registered app " + description.name + " with ID " + app.id)
         persistenceEngine.addApplication(app)
         driver.send(RegisteredApplication(app.id, self))
+        //尝试给当前应用程序分配资源
         schedule()
       }
     }
@@ -1148,6 +1149,7 @@ private[deploy] object Master extends Logging {
   }
 
   /**
+   * Master RPCEndpoint的创建：利用RpcEnv.create工厂方法通过反射机制创建RPCEndpoint实例
    * Start the Master and return a three tuple of:
    *   (1) The Master RpcEnv
    *   (2) The web UI bound port

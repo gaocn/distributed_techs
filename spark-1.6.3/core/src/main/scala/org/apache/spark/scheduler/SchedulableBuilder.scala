@@ -42,7 +42,7 @@ private[spark] class FIFOSchedulableBuilder(val rootPool: Pool)
   extends SchedulableBuilder with Logging {
 
   override def buildPools() {
-    // nothing
+    // nothing FIFO模式下不需要Pool树结构，下面直接是TaskSetManager
   }
 
   override def addTaskSetManager(manager: Schedulable, properties: Properties) {
@@ -53,7 +53,9 @@ private[spark] class FIFOSchedulableBuilder(val rootPool: Pool)
 private[spark] class FairSchedulableBuilder(val rootPool: Pool, conf: SparkConf)
   extends SchedulableBuilder with Logging {
 
+  //
   val schedulerAllocFile = conf.getOption("spark.scheduler.allocation.file")
+  //spark程序的conf目录下有该文件
   val DEFAULT_SCHEDULER_FILE = "fairscheduler.xml"
   val FAIR_SCHEDULER_PROPERTIES = "spark.scheduler.pool"
   val DEFAULT_POOL_NAME = "default"
@@ -85,7 +87,7 @@ private[spark] class FairSchedulableBuilder(val rootPool: Pool, conf: SparkConf)
     // finally create "default" pool
     buildDefaultPool()
   }
-
+  //创建叶节点
   private def buildDefaultPool() {
     if (rootPool.getSchedulableByName(DEFAULT_POOL_NAME) == null) {
       val pool = new Pool(DEFAULT_POOL_NAME, DEFAULT_SCHEDULING_MODE,
@@ -95,7 +97,7 @@ private[spark] class FairSchedulableBuilder(val rootPool: Pool, conf: SparkConf)
         DEFAULT_POOL_NAME, DEFAULT_SCHEDULING_MODE, DEFAULT_MINIMUM_SHARE, DEFAULT_WEIGHT))
     }
   }
-
+  //构建Pool树结构
   private def buildFairSchedulerPool(is: InputStream) {
     val xml = XML.load(is)
     for (poolNode <- (xml \\ POOLS_PROPERTY)) {

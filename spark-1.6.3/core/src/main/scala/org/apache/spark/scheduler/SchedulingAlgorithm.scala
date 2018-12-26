@@ -37,13 +37,17 @@ private[spark] class FIFOSchedulingAlgorithm extends SchedulingAlgorithm {
       res = math.signum(stageId1 - stageId2)
     }
     if (res < 0) {
-      true
+      true //priority越小，stageid越小，TaskSetManger的优先级越大
     } else {
       false
     }
   }
 }
 
+/**
+  * 公平调度是一个树结构，因此其优先级比较也复杂点
+  * 运行Task越多则说明越重要，优先级也就越高
+  */
 private[spark] class FairSchedulingAlgorithm extends SchedulingAlgorithm {
   override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {
     val minShare1 = s1.minShare
@@ -58,13 +62,13 @@ private[spark] class FairSchedulingAlgorithm extends SchedulingAlgorithm {
     val taskToWeightRatio2 = runningTasks2.toDouble / s2.weight.toDouble
     var compare: Int = 0
 
-    if (s1Needy && !s2Needy) {
+    if (s1Needy && !s2Needy) { //S1中正在执行的Task个数小于minShare最小CPU核数，则S2中的相反，则让S1的优先级高点先被调度，防止饥饿现象
       return true
     } else if (!s1Needy && s2Needy) {
       return false
-    } else if (s1Needy && s2Needy) {
+    } else if (s1Needy && s2Needy) { //
       compare = minShareRatio1.compareTo(minShareRatio2)
-    } else {
+    } else { //
       compare = taskToWeightRatio1.compareTo(taskToWeightRatio2)
     }
 
@@ -73,6 +77,7 @@ private[spark] class FairSchedulingAlgorithm extends SchedulingAlgorithm {
     } else if (compare > 0) {
       false
     } else {
+      //最后根据名字判断优先级
       s1.name < s2.name
     }
   }

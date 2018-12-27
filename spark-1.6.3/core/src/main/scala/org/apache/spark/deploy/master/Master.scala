@@ -144,6 +144,7 @@ private[deploy] class Master(
   private var restServerBoundPort: Option[Int] = None
 
   override def onStart(): Unit = {
+    //Starting Spark master at spark://HQxTSL-150174:7077
     logInfo("Starting Spark master at " + masterUrl)
     logInfo(s"Running Spark version ${org.apache.spark.SPARK_VERSION}")
     //基于jetty创建web服务器，使用scala与jsp结合创建web服务
@@ -225,8 +226,16 @@ private[deploy] class Master(
   override def revokedLeadership() {
     self.send(RevokedLeadership)
   }
+
   //接收但不回复消息
   override def receive: PartialFunction[Any, Unit] = {
+    /**
+      * onStart-->初始化完成后，被选举为Leader则发送ElectedLeader消息
+      *   -->beginRecovery，Master状态为StandBy
+      *       --》（1）重新注册apps，将app状态置为UNKNOWN并向Driver发送MasterChanged消息；（2）将driver直接添加到drivers列表中，对于worker丢失的driver后续会重启；（3）重新注册workers，将worker状态置为UNKNOWN并向Worker发送MasterChanged消息。
+      *   -->每60发送一次CompleteRecovery消息检查集群是否完全恢复
+      *       --》completeRecovery，将状态置为COMPLETING_RECOVERY，同时（1）删除没有响应的状态为UNKNOWN的workers、apps；（2）对于drivers所在的worker丢失的情况，若supervise=true则重启drivers；（3）将状态置为ALIVE，并执行schedule对waitingDrivers、waitingApps进行资源调度。
+      */
     case ElectedLeader => {
       //被选为Leader会，首先是集群恢复状态，在恢复完成后，leader为ALIVE状态
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
@@ -269,7 +278,7 @@ private[deploy] class Master(
         schedule()
       }
     }
-    //Executor状态变化：反馈Worker中ExecutorRunner状态[启动、失败、退出...]
+    //检查ExecutorRunner执行状态变化，并回收资源完成任务的资源，并进行资源调度
     case ExecutorStateChanged(appId, execId, state, message, exitStatus) => {
       val execOption = idToApp.get(appId).flatMap(app => app.executors.get(execId))
       execOption match {
@@ -317,7 +326,7 @@ private[deploy] class Master(
           logWarning(s"Got status update for unknown executor $appId/$execId")
       }
     }
-    //Driver状态变化
+    //检查Driver执行状态并回收已完成的任务，回收资源，进行资源调度
     case DriverStateChanged(driverId, state, exception) => {
       state match {
         case DriverState.ERROR | DriverState.FINISHED | DriverState.KILLED | DriverState.FAILED =>
@@ -342,7 +351,11 @@ private[deploy] class Master(
           }
       }
     }
-    //集群Master状态发送改变
+  /**
+    * （1）集群Master状态发送改变时，需要app重新注册，在app确认最新Master后，将app状态置为WAITING等待调度。
+    * （2）检查worker和application的状态是否均为正常状态，则执行completeRecovery恢复Master状态为RUNNING，并开始进行资源调度
+    * 因为是Master发生改变，因此最后需要执行恢复工作。
+    */
     case MasterChangeAcknowledged(appId) => {
       idToApp.get(appId) match {
         case Some(app) =>
@@ -354,7 +367,6 @@ private[deploy] class Master(
 
       if (canCompleteRecovery) { completeRecovery() }
     }
-
   /**
     * 当因网络异常，Master节点失效，Master节点重新选举后，Worker会接收MasterChanged消息。
     * 在Worker更新Master后，会发送WorkerSchedulerStateResponse消息通知Master节点当前
@@ -363,7 +375,7 @@ private[deploy] class Master(
     *   （1）更新Worker的调度状态为RUNNING，
     *   （2）根据idToApp将有效的ExecutorInfo信息更新到Worker对应的executors中
     *   （3）更新Master中保存的driver信息（记录driver运行在哪些worker中）
-    *   （4）若worker和application的状态均为正常状态，则执行completeRecovery恢复Master状态为RUNNING，并开始进行资源调度
+    *   （4）检查worker和application的状态是否均为正常状态，则执行completeRecovery恢复Master状态为RUNNING，并开始进行资源调度
     * 因为是Master发生改变，因此最后需要执行恢复工作。
     */
     case WorkerSchedulerStateResponse(workerId, executors, driverIds) => {

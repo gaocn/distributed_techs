@@ -269,7 +269,7 @@ private[deploy] class Master(
         schedule()
       }
     }
-    //Executor状态变化
+    //Executor状态变化：反馈Worker中ExecutorRunner状态[启动、失败、退出...]
     case ExecutorStateChanged(appId, execId, state, message, exitStatus) => {
       val execOption = idToApp.get(appId).flatMap(app => app.executors.get(execId))
       execOption match {
@@ -355,6 +355,17 @@ private[deploy] class Master(
       if (canCompleteRecovery) { completeRecovery() }
     }
 
+  /**
+    * 当因网络异常，Master节点失效，Master节点重新选举后，Worker会接收MasterChanged消息。
+    * 在Worker更新Master后，会发送WorkerSchedulerStateResponse消息通知Master节点当前
+    * Worker上运行的ExecutorRunner和Driver信息。
+    * Master接收信息后：
+    *   （1）更新Worker的调度状态为RUNNING，
+    *   （2）根据idToApp将有效的ExecutorInfo信息更新到Worker对应的executors中
+    *   （3）更新Master中保存的driver信息（记录driver运行在哪些worker中）
+    *   （4）若worker和application的状态均为正常状态，则执行completeRecovery恢复Master状态为RUNNING，并开始进行资源调度
+    * 因为是Master发生改变，因此最后需要执行恢复工作。
+    */
     case WorkerSchedulerStateResponse(workerId, executors, driverIds) => {
       idToWorker.get(workerId) match {
         case Some(worker) =>
@@ -620,6 +631,7 @@ private[deploy] class Master(
       spreadOutApps: Boolean): Array[Int] = {
     val coresPerExecutor = app.desc.coresPerExecutor
     val minCoresPerExecutor = coresPerExecutor.getOrElse(1)
+		//为空表示一个Worker上只允许启一个Executor，否则允许启动多个Executor
     val oneExecutorPerWorker = coresPerExecutor.isEmpty
     val memoryPerExecutor = app.desc.memoryPerExecutorMB
     val numUsable = usableWorkers.length
@@ -684,10 +696,16 @@ private[deploy] class Master(
 
   /**
    * Schedule and launch executors on workers
+   * Spark默认为应用程序启动Executor的方式为FIFO，所有提交的应用程序都放在调度等待队列中，
+   * 只有满足了前面应用程序的资源分配的基础上才能为下一个应用程序分配资源！
    */
   private def startExecutorsOnWorkers(): Unit = {
     // Right now this is a very simple FIFO scheduler. We keep trying to fit in the first app
     // in the queue, then the second app, etc.
+    /**
+      * waitingApps为ApplicationInfo数组
+      * ApplicationInfo <startTime, id, ApplicationDescription<name, maxCores, memoryPerExecutorMB, command, appUiUrl, eventLogDir, eventLogCodec, coresPerExecutor, initialExecutorLimit, user>, submitDate, RpcEndpointRef, defaultCores>
+      */
     for (app <- waitingApps if app.coresLeft > 0) {
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
       // Filter out workers that don't have enough resources to launch an executor
@@ -696,7 +714,7 @@ private[deploy] class Master(
         .filter(worker => worker.memoryFree >= app.desc.memoryPerExecutorMB &&
           worker.coresFree >= coresPerExecutor.getOrElse(1))
         .sortBy(_.coresFree).reverse
-      //在FIFO情况下，默认spreadOutApps来让应用程序尽可能多的运行在所有的Node上
+      //在FIFO情况下，默认spreadOutApps来让应用程序尽可能多的运行在所有的Node上,spark.deploy.spreadOut=true
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
 
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
@@ -735,9 +753,15 @@ private[deploy] class Master(
    * 先启动Driver，才会发生后续的一切的资源调度模式！！
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
+   *
+在新增应用程序或资源发生改变时调用schedule进行资源调度
+（1）schedule--》在Master为RUNNING状态时，对于状态为RUNNING的Worker，首先为waitingDrivers顺序分配资源，若shuffledWorker能够满足Driver的CORE和MEM要求则launchDriver给Worker发送命令启动<SparkDeploySchedulerBackend>进程;然后调用<startExecutorsOnWorkers>为waitingApps分配资源并在Worker上启动ExecutorBackend进程。
+（2）startExecutorsOnWorkers--》Executor启动模式有两种：FIFO、FAIR，默认采用FIFO为应用程序分配资源。首先，对于第一个应用程序将RUNNING状态且满足COREs和MEM要求的的Worker按照COREs从的大小排列，然后调用<scheduleExecutorsOnWorkers>方法获取从每个Worker中要分配的COREs数组assignedCores。最后根据要分配assignedCores调用<allocateWorkerResourceToExecutors>在每个Worker上分配资源并启动ExecutorBackend。
+（3）scheduleExecutorsOnWorkers--》为应用程序分配Executor有两种方式：尽可能多的将Executor分散到每个Worker上、尽可能多的将Executor集中到同一Worker上。通过参数spark.deploy.spreadOut参数配置，前者能够充分利用分布式计算资源提高性能同时副产品是数据本地性加速计算速度，而后者适合计算密集任务。
+（4）allocateWorkerResourceToExecutors--》根据分配的COREs数目和coresPerExecutor决定在Worker上启动单个Executor还是多个Executors，针对要每个要启动的Executor调用launchExecutor发送命令给Worker启动ExecutorBackend进程，同时通知Driver已启动ExecutorBackend。
    */
   private def schedule(): Unit = {
-    //当前Master必须时Alive时才能进行资源调度，若不是Alive状态则直接返回即Standby Master不会进行资源调度
+    //当前Master必须是Alive时才能进行资源调度，若不是Alive状态则直接返回即Standby Master不会进行资源调度
     if (state != RecoveryState.ALIVE) {
       return
     }
@@ -746,13 +770,18 @@ private[deploy] class Master(
     val shuffledAliveWorkers = Random.shuffle(workers.toSeq.filter(_.state == WorkerState.ALIVE))
     val numWorkersAlive = shuffledAliveWorkers.size
     var curPos = 0
+
+    /**
+      * Cluster模式下，提交的Driver会加入等待列表waitingDrivers中
+      * waitingDrivers为DriverInfo<startTime,id,DriverDescription<jarUrl,mem,cores,supervise,command>,submitDate>的数组，
+      *   其中supervise若为true，表示在Cluster模式下Driver执行失败会重新执行，默认重置执行5次。
+      */
     for (driver <- waitingDrivers.toList) { // iterate over a copy of waitingDrivers
       // We assign workers to each waiting driver in a round-robin fashion. For each driver, we
       // start from the last worker that was assigned a driver, and continue onwards until we have
       // explored all alive workers.
       var launched = false
       var numWorkersVisited = 0
-      //Cluster模式下提交的Driver时，Driver会加入等待列表waitingDrivers中，waitingDrivers为DriverInfo数组，DriverInfo<startTime,id,DriverDescription<jarUrl,mem, cores,supervise, command>,submitDate>，其中supervise若为true，在cluster模式下若Driver执行失败则会重启执行，默认重复执行5次
       while (numWorkersVisited < numWorkersAlive && !launched) {
         val worker = shuffledAliveWorkers(curPos)
         numWorkersVisited += 1

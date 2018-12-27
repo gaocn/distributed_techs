@@ -39,6 +39,17 @@ import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rpc._
 import org.apache.spark.util.{ThreadUtils, SignalLogger, Utils}
 
+/**
+  *(1)在Worker启动Driver和Executor时，Driver所在进程的内存和COREs肯定满足需求，而Executor所在进程的内存肯定满足需求，当实际分配的COREs数目可能比要求的少也能比要求多，具体涉及schedule方法的实现。
+  *
+  * Worker所起的作用有以下几个：
+  * 1、 向Master注册
+  * 2、 接受Master的指令，启动或者杀掉Executor
+  * 3、 接受Master的指令，启动或者杀掉Driver
+  * 4、 报告Executor/Driver的状态，在Executor、Driver执行完成后释放资源，告诉Master进行资源调度。
+  * 5、 心跳到Master，心跳超时则Master认为Worker已经挂了不能工作了
+  * 6、 向GUI报告Worker的状态
+  */
 private[deploy] class Worker(
     override val rpcEnv: RpcEnv,
     webUiPort: Int,
@@ -70,6 +81,7 @@ private[deploy] class Worker(
   // For worker and executor IDs
   private def createDateFormat = new SimpleDateFormat("yyyyMMddHHmmss")
   // Send a heartbeat every (heartbeat timeout) / 4 milliseconds
+  //60s内master接收不到worker的心跳信息，master就认为该worker 丢失了
   private val HEARTBEAT_MILLIS = conf.getLong("spark.worker.timeout", 60) * 1000 / 4
 
   // Model retries to connect to the master, after Hadoop's model.
@@ -84,8 +96,10 @@ private[deploy] class Worker(
     val randomNumberGenerator = new Random(UUID.randomUUID.getMostSignificantBits)
     randomNumberGenerator.nextDouble + FUZZ_MULTIPLIER_INTERVAL_LOWER_BOUND
   }
+  //初始化的注册重试间隔
   private val INITIAL_REGISTRATION_RETRY_INTERVAL_SECONDS = (math.round(10 *
     REGISTRATION_RETRY_FUZZ_MULTIPLIER))
+  //延长的注册重试间隔
   private val PROLONGED_REGISTRATION_RETRY_INTERVAL_SECONDS = (math.round(60
     * REGISTRATION_RETRY_FUZZ_MULTIPLIER))
 
@@ -99,11 +113,11 @@ private[deploy] class Worker(
 
   private val testing: Boolean = sys.props.contains("spark.testing")
   private var master: Option[RpcEndpointRef] = None
-  private var activeMasterUrl: String = ""
+  private var activeMasterUrl: String = "" // 当前有效的master url
   private[worker] var activeMasterWebUiUrl : String = ""
   private val workerUri = rpcEnv.uriOf(systemName, rpcEnv.address, endpointName)
-  private var registered = false
-  private var connected = false
+  private var registered = false // 该worker是否已经注册
+  private var connected = false  //该worker是否连接到master
   private val workerId = generateWorkerId()
   private val sparkHome =
     if (testing) {
@@ -125,6 +139,7 @@ private[deploy] class Worker(
   val appDirectories = new HashMap[String, Seq[String]]
   val finishedApps = new HashSet[String]
 
+  //UI上默认显示的Executors、Drivers信息的条数为1000
   val retainedExecutors = conf.getInt("spark.worker.ui.retainedExecutors",
     WorkerWebUI.DEFAULT_RETAINED_EXECUTORS)
   val retainedDrivers = conf.getInt("spark.worker.ui.retainedDrivers",
@@ -142,9 +157,12 @@ private[deploy] class Worker(
   private var connectionAttemptCount = 0
 
   private val metricsSystem = MetricsSystem.createMetricsSystem("worker", conf, securityMgr)
-  private val workerSource = new WorkerSource(this)
 
+  //Spark内部Metrics System的组件
+  private val workerSource = new WorkerSource(this)
+  //异步任务计算结果
   private var registerMasterFutures: Array[JFuture[_]] = null
+  // result of scheduling a task
   private var registrationRetryTimer: Option[JScheduledFuture[_]] = None
 
   // A thread pool for registering with masters. Because registering with a master is a blocking
@@ -415,7 +433,7 @@ private[deploy] class Worker(
     */
   override def receive: PartialFunction[Any, Unit] = synchronized {
     case SendHeartbeat =>
-      //发送的heartbeat中包含Worker的Mem、CORE信息！！？？
+      //发送的heartbeat中包含Worker的Mem、CORE信息，但不包含已用计算资源信息
       if (connected) { sendToMaster(Heartbeat(workerId, self)) }
 
     case WorkDirCleanup =>
@@ -517,6 +535,7 @@ private[deploy] class Worker(
       }
     //通知Master更新状态,如果Executor任务处理完成，则做清理、资源回收工作
     case executorStateChanged @ ExecutorStateChanged(appId, execId, state, message, exitStatus) =>
+      //Executor状态改变：若应用程序执行完成则释放资源，并通知Master清除保存状态后进行下一次资源调度
       handleExecutorStateChanged(executorStateChanged)
 
     //关闭ExecutorRunner启动的ExecutorBackend进程
@@ -565,6 +584,7 @@ private[deploy] class Worker(
     }
 
     case driverStateChanged @ DriverStateChanged(driverId, state, exception) => {
+      //若应用程序运行结束，则回收资源，并通知Master清除保存状态后进行下一次资源调度
       handleDriverStateChanged(driverStateChanged)
     }
 

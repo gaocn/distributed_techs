@@ -36,6 +36,9 @@ import org.apache.spark.util.{Utils, Clock, SystemClock}
 /**
  * Manages the execution of one driver, including automatically restarting the driver on failure.
  * This is currently only used in standalone cluster deploy mode.
+ *
+ * Driver失败重启需要满足的条件：1、在Cluster模式下；2、设置标志位DriverDescription.supervise = true。
+ * Worker负责Driver失败后的重启！！
  */
 private[deploy] class DriverRunner(
     conf: SparkConf,

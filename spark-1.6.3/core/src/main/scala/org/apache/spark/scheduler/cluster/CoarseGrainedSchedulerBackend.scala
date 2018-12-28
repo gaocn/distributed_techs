@@ -102,10 +102,19 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     private val reviveThread =
       ThreadUtils.newDaemonSingleThreadScheduledExecutor("driver-revive-thread")
 
+    /**
+      *周期性地检查资源情况并进行资源调用，默认每1s检查一次
+      *配置参数：spark.scheduler.revive.interval
+      * DriverEndpoint--》周期性（默认1s）检查资源状况并进行资源调度
+      *   --》makeOffers，收集分配给Driver中所有可用（freeCores）的Executor并创建WorkerOffer数组
+      *     --》scheduler.resourceOffers，根据可用资源WorkerOffer从TaskScheduler中获取要执行的任务TaskSet
+      *       --》launchTasks，针对scheduler返回的TaskDescription数组的数组<每个Executor执行的任务列表>，执行具体任务。
+      *          （1）序列化任务后若任务大小超过128MB-200K，则告知scheduler中对应的TaskSetManagers终止此次任务调度；
+      *          （2）若序列化后的任务小于128M则发送指令LaunchTask将任务发到对应Executor上去执行。
+      */
     override def onStart() {
       // Periodically revive offers to allow delay scheduling to work 延迟调度
       val reviveIntervalMs = conf.getTimeAsMs("spark.scheduler.revive.interval", "1s")
-      //周期性地检查资源情况并进行资源调用
       reviveThread.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = Utils.tryLogNonFatalError {
           //在SchedulerBackend启动时，周期性给自己发送一个ReviveOffers，发起资源调度！
@@ -128,6 +137,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                 s"from unknown executor with ID $executorId")
           }
         }
+
       case ReviveOffers =>
        //该资源调度，不仅仅来自reviveThread的周期调度！
         makeOffers()
@@ -201,7 +211,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     // Make fake resource offers on all executors
-    //应用程序第一次启动时为fake，因为还没有运行任务不需要调度资源；而该方法会被反复调用，所以这里注释有点问题！
+    // 应用程序第一次启动时为fake，因为还没有运行任务不需要调度资源；
+    // 而该方法会被反复调用，所以这里注释有点问题！
     private def makeOffers() {
       // Filter out executors under killing
       val activeExecutors = executorDataMap.filterKeys(executorIsAlive)
@@ -352,6 +363,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
   }
 
+  /**
+    * 停止应用程序包括两部分：先停止Executors，然后停止Driver！
+    */
   override def stop() {
     stopExecutors()
     try {

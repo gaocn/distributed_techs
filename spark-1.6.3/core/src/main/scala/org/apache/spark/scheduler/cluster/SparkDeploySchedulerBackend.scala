@@ -33,6 +33,21 @@ import org.apache.spark.util.Utils
   *  -- SparkDeploySchedulerBackend是从属于TaskSchedulerImpl实例的，TaskSchedulerImpl是底层调度器它负责具体的一个Stage内部的任务的集合TaskSet的具体的运行，运行就需要资源因此需要通过SparkDeploySchedulerBackend来负责具体的集群资源的获取和调度（从应用程序层面看）。
   *
   * 这里没有写注释，则默认与CoarseGrainedSchedulerBackend功能一致（因为CoarseGrainedSchedulerBackend中写了注释）
+  *  -------------------------------
+  * |  SparkDeploySchedulerBackend  |
+  * |-------------------------------|
+  * | |-----------------------------|
+  * | |CoarseGrainedSchedulerBackend|
+  * | |  |--------------------------|
+  * | |  |     DriverEndpoint       |===>检查资源状况并进行资源调度，接收Executor的注册消息记录可用资源情况
+  * | |  |--------------------------|
+  * | |-----------------------------|
+  * | |-----------------------------|
+  * | |AppClient                    |
+  * | |  |--------------------------|
+  * | |  |     ClientEndpoint       |===>向Master注册应用程序
+  * | |  |--------------------------|
+  * | |-----------------------------|
   */
 private[spark] class SparkDeploySchedulerBackend(
     scheduler: TaskSchedulerImpl,

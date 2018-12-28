@@ -92,6 +92,12 @@ private[spark] class AppClient(
     private val askAndReplyThreadPool =
       ThreadUtils.newDaemonCachedThreadPool("appclient-receive-and-reply-threadpool")
 
+    /**
+      * onStart--》
+      *   -->registerWithMaster 尝试注册应用程序，重试3次，超时20ms
+      *     --》tryRegisterAllMasters同时提交执行numMasters个Runnable任务并用yield产生Futuren数组以便取消，在Runnable中先Master发送RegisterApplication消息注册应用程序。
+      *     --》registrationRetryTimer每20s检查一次应用程序是否注册成功，（1）若注册成功则取消正在进行的注册任务同时关闭注册应用程序的线程池；（2）若重试3次应用程序未注册成功则停止注册；（3）若注册次数未超过3次，则取消上一次的注册任务，进行下一次重试。
+      */
     override def onStart(): Unit = {
       try {
         registerWithMaster(1)
@@ -176,6 +182,14 @@ private[spark] class AppClient(
       masterRpcAddresses.contains(remoteAddress)
     }
 
+    /**
+      *ClientEndpoint需要监听以下四类事件，以便报给为AppClient:
+      * (1) connecting to the cluster,
+      * (2) disconnecting to the cluster,
+      * (3) being given an executor
+      * (4) having an executor removed
+      * 同时监听ApplicationRemoved事件，当应用程序被移除时，需要停止ClientEndpoint
+      */
     override def receive: PartialFunction[Any, Unit] = {
       case RegisteredApplication(appId_, masterRef) =>
         // FIXME How to handle the following cases?
@@ -184,12 +198,12 @@ private[spark] class AppClient(
         // 2. Receive multiple RegisteredApplication from different masters because the master is
         // changing.
         //这两个问题实际上所有分布式系统设计中都没有解决，简单方式是维护一个集群级别的全局变量！
-        //但是这样做比较多事！！ 例如C语言为什么总有指针溢出，为什么做边界检查？ --》因为效率原因！！！
+        //但是这样做比较多事！！ 例如C语言为什么总有指针溢出，为什么不做边界检查？ --》因为效率原因！！！
         appId.set(appId_)
         registered.set(true)
         master = Some(masterRef)
         listener.connected(appId.get)
-
+      //1. 发送StopAppClient消息，ClientEndpoint处理发送StopAppClient消息消息，先Master发送
       case ApplicationRemoved(message) =>
         markDead("Master removed our application: %s".format(message))
         stop()
@@ -215,6 +229,9 @@ private[spark] class AppClient(
         masterRef.send(MasterChangeAcknowledged(appId.get))
     }
 
+    /**
+      *
+      */
     override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
       case StopAppClient =>
         markDead("Application has been stopped.")
@@ -222,6 +239,10 @@ private[spark] class AppClient(
         context.reply(true)
         stop()
 
+      /**
+        * 请求调整应用程序启动Executor的数目上限，若调整后的上限小于目前应用程序已启动的Executor个数，
+        * 不会做任何调整，除非接收显示指令KillExecutors，见下面消息！
+        */
       case r: RequestExecutors =>
         master match {
           case Some(m) => askAndReplyAsync(m, context, r)
@@ -230,6 +251,10 @@ private[spark] class AppClient(
             context.reply(false)
         }
 
+      /**
+        * 当通过RequestExecutors调整分配给应用程序的Executors数目，且已分配给应用程序的Executor数目
+        * 超过设置上限时，会把所有应用程序的Executor杀掉，然后重新调度给应用程序分配资源！
+        */
       case k: KillExecutors =>
         master match {
           case Some(m) => askAndReplyAsync(m, context, k)
@@ -240,7 +265,7 @@ private[spark] class AppClient(
     }
 
     private def askAndReplyAsync[T](
-        endpointRef: RpcEndpointRef,
+        endpointRef: RpcEndpointRef, //Master
         context: RpcCallContext,
         msg: T): Unit = {
       // Create a thread to ask a message and reply with the result.  Allow thread to be
@@ -326,6 +351,7 @@ private[spark] class AppClient(
    */
   def requestTotalExecutors(requestedTotal: Int): Boolean = {
     if (endpoint.get != null && appId.get != null) {
+      //向Master申请启动Executor的数量
       endpoint.get.askWithRetry[Boolean](RequestExecutors(appId.get, requestedTotal))
     } else {
       logWarning("Attempted to request executors before driver fully initialized.")
@@ -339,6 +365,7 @@ private[spark] class AppClient(
    */
   def killExecutors(executorIds: Seq[String]): Boolean = {
     if (endpoint.get != null && appId.get != null) {
+      //向Master申请关闭指定数量的Executors
       endpoint.get.askWithRetry[Boolean](KillExecutors(appId.get, executorIds))
     } else {
       logWarning("Attempted to kill executors before driver fully initialized.")

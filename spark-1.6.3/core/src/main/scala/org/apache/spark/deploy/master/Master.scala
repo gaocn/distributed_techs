@@ -405,7 +405,7 @@ private[deploy] class Master(
 
       if (canCompleteRecovery) { completeRecovery() }
     }
-
+		//来自AppClient中的ClientEndpoint发送的指令，请求注销应用，然后停止AppClient应用程序
     case UnregisterApplication(applicationId) =>
       logInfo(s"Received unregister request from application $applicationId")
       idToApp.get(applicationId).foreach(finishApplication)
@@ -538,6 +538,7 @@ private[deploy] class Master(
 		/***
 			* 请求调整应用程序启动Executor的数目上限，若调整后的上限小于目前应用程序已启动的Executor个数，
 			* 不会做任何调整，除非接收显示指令KillExecutors，见下面消息！
+			* 来自AppClient中的ClientEndpoint的请求，代表应用程序
 			*/
     case RequestExecutors(appId, requestedTotal) =>
       context.reply(handleRequestExecutors(appId, requestedTotal))
@@ -545,6 +546,7 @@ private[deploy] class Master(
 		/**
 			* 当通过RequestExecutors调整分配给应用程序的Executors数目，且已分配给应用程序的Executor数目
 			* 超过设置上限时，会把所有应用程序的Executor杀掉，然后重新调度给应用程序分配资源！
+			* 来自AppClient中的ClientEndpoint的请求，代表应用程序
  			*/
     case KillExecutors(appId, executorIds) =>
       val formattedExecutorIds = formatExecutorIds(executorIds)

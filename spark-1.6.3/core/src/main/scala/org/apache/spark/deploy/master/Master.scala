@@ -420,7 +420,9 @@ private[deploy] class Master(
   }
   //接收消息并且回复消息
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-    //worker注册时，必须给worker确定信息，worker才能正常工作
+		/**
+			* worker注册时，必须给worker确定信息，worker才能正常工作
+			*/
     case RegisterWorker(
         id, workerHost, workerPort, workerRef, cores, memory, workerUiPort, publicAddress) => {
       logInfo("Registering worker %s:%d with %d cores, %s RAM".format(
@@ -533,9 +535,17 @@ private[deploy] class Master(
       context.reply(BoundPortsResponse(address.port, webUi.boundPort, restServerBoundPort))
     }
 
+		/***
+			* 请求调整应用程序启动Executor的数目上限，若调整后的上限小于目前应用程序已启动的Executor个数，
+			* 不会做任何调整，除非接收显示指令KillExecutors，见下面消息！
+			*/
     case RequestExecutors(appId, requestedTotal) =>
       context.reply(handleRequestExecutors(appId, requestedTotal))
 
+		/**
+			* 当通过RequestExecutors调整分配给应用程序的Executors数目，且已分配给应用程序的Executor数目
+			* 超过设置上限时，会把所有应用程序的Executor杀掉，然后重新调度给应用程序分配资源！
+ 			*/
     case KillExecutors(appId, executorIds) =>
       val formattedExecutorIds = formatExecutorIds(executorIds)
       context.reply(handleKillExecutors(appId, formattedExecutorIds))
@@ -821,6 +831,14 @@ private[deploy] class Master(
       ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory))
   }
 
+	/**
+		* 1、对于IP:PORT相同当状态为DEAD先进行清理。
+		* 2、对IP:PORT相同当状态为UNKNOWN的Worker，说明Worker被重启了，因此需要移除旧的Worker实例。
+		* 	(1)对于Worker上所有Executor，告知Driver Executor状态为：ExecutorState.LOST表示Executor丢失。
+		* 	(2)对于Worker上所有Driver，若设置supervise=true则重新调度，否则直接删除driver。
+		* 3、若Worker为其他状态，说明已经注册，直接返回false。
+		* 4、否则，添加Worker实例并返回true。
+		*/
   private def registerWorker(worker: WorkerInfo): Boolean = {
     // There may be one or more refs to dead workers on this same node (w/ different ID's),
     // remove them.
@@ -872,6 +890,11 @@ private[deploy] class Master(
     persistenceEngine.removeWorker(worker)
   }
 
+	/**
+		* 当Driver所在的Worker丢失即<driver.worker.isEmpty>时则重新为其分配计算资源。
+		* 1、在Master完成恢复后，对没有分配Worker的Driver重新调度
+		* 2、在Worker DEAD且连接超时后，若设置supervise则重新调度该DEAD Worker上的drivers
+		*/
   private def relaunchDriver(driver: DriverInfo) {
     driver.worker = None
     driver.state = DriverState.RELAUNCHING
@@ -887,6 +910,9 @@ private[deploy] class Master(
     new ApplicationInfo(now, appId, desc, date, driver, defaultCores)
   }
 
+	/**
+		* 检查是否重新注册，若否则加入waitingApps等待被分配资源
+		*/
   private def registerApplication(app: ApplicationInfo): Unit = {
     val appAddress = app.driver.address
     if (addressToApp.contains(appAddress)) {
@@ -905,7 +931,7 @@ private[deploy] class Master(
   private def finishApplication(app: ApplicationInfo) {
     removeApplication(app, ApplicationState.FINISHED)
   }
-
+	//Master清除应用程序，并消息ApplicationRemoved通知Driver、Worker，进行下一次资源调度
   def removeApplication(app: ApplicationInfo, state: ApplicationState.Value) {
     if (apps.contains(app)) {
       logInfo("Removing app " + app.id)

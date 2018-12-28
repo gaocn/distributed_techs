@@ -17,25 +17,24 @@
 
 package org.apache.spark.deploy.client
 
-import java.util.concurrent._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import java.util.concurrent.{Future => JFuture, ScheduledFuture => JScheduledFuture}
+import java.util.concurrent.{Future => JFuture, ScheduledFuture => JScheduledFuture, _}
 
-import scala.util.control.NonFatal
-
-import org.apache.spark.{Logging, SparkConf}
-import org.apache.spark.deploy.{ApplicationDescription, ExecutorState}
 import org.apache.spark.deploy.DeployMessages._
 import org.apache.spark.deploy.master.Master
+import org.apache.spark.deploy.{ApplicationDescription, ExecutorState}
 import org.apache.spark.rpc._
-import org.apache.spark.util.{RpcUtils, ThreadUtils, Utils}
+import org.apache.spark.util.{RpcUtils, ThreadUtils}
+import org.apache.spark.{Logging, SparkConf}
+
+import scala.util.control.NonFatal
 
 /**
  * Interface allowing applications to speak with a Spark deploy cluster. Takes a master URL,
  * an app description, and a listener for cluster events, and calls back the listener when various
  * events occur.
  *
- *AppClient为应用程序与Spark集群通信的接口，因此需要有masterUrls标识通信地址
+ * AppClient为应用程序与Spark集群通信的接口，因此需要有masterUrls标识通信地址
  *
  * @param masterUrls Each url should look like spark://host:port.
  */

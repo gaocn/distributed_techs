@@ -5,6 +5,7 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.BackgroundCallback;
 import org.apache.curator.framework.api.CuratorEvent;
+import org.apache.curator.framework.api.CuratorWatcher;
 import org.apache.curator.framework.recipes.cache.*;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.framework.state.ConnectionStateListener;
@@ -50,7 +51,7 @@ public class CuratorUsage {
                 .connectionTimeoutMs(CONN_TIMEOUT)
                 .sessionTimeoutMs(SESSION_TIMEOUT)
                 .retryPolicy(backoffRetry)
-                .authorization("digest", "root:root".getBytes())
+                .authorization("digest", "gao:gao".getBytes())
                 .build();
 
         //连接状态监听
@@ -131,6 +132,19 @@ public class CuratorUsage {
         logger.info("paths:{}", paths);
 
 
+        client.getData().usingWatcher(new Watcher() {
+            public void process(WatchedEvent event) {
+                logger.info("ZK Native Watcher");
+            }
+        }).forPath("/master");
+        client.getData().usingWatcher(new CuratorWatcher() {
+            public void process(WatchedEvent event) throws Exception {
+                logger.info("Curator Watcher");
+            }
+        }).forPath("/master");
+
+
+
         /**
          * NodeCache: 节点监听
          *
@@ -138,7 +152,7 @@ public class CuratorUsage {
          * 如果原本节点不存在，那么cache就会在节点创建后触发NodeCacheListener,
          * 但是如果该节点被删除，那么Curator就无法触发NodeCacheListener了。
          */
-        final NodeCache nodeCache = new NodeCache(client, "/acls", false);
+        final NodeCache nodeCache = new NodeCache(client, "/acl", false);
         // 立即从ZK中获取数据并缓存
         nodeCache.start(true);
 
@@ -149,7 +163,7 @@ public class CuratorUsage {
                     }
                 }
         );
-        client.setData().forPath("/acls", "test cache node listener".getBytes());
+        client.setData().forPath("/acl", "test cache node listener".getBytes());
         // 使用原生监听器
 //        client.getData().usingWatcher(new Watcher() {
 //            public void process(WatchedEvent watchedEvent) {

@@ -324,6 +324,10 @@ class DAGScheduler(
 
   /**
    * Create a ResultStage associated with the provided jobId.
+   *
+   * 返回执行RDD的所有parent Stages（直接ShuffleDependency所在的Stage），
+   * 对于不存在Stage则新创建ShuffleMapStage，由于作业提交前的操作为Lazy级别得操作，因此创建ResultStage的过程会不断回溯，直到所有的ShuffleMapStage创建完毕，因此该过程也是划分Stage的过程！！
+    *
    */
   private def newResultStage(
       rdd: RDD[_],
@@ -434,13 +438,13 @@ class DAGScheduler(
     * 从后往前推依赖关系，算当前RDD必须算父RDD，这就是函数展开的过程，表面看是RDD的依赖关系，事实上这就是函数展开的过程。
     * 假设有100个RDD的算子（函数）步骤，而且都是窄依赖的话，实际上现在是一个函数。
     * 通过依赖关系隐性的完成了算子的合并，因为它只需要关注它的父RDD是谁，计算的时候由于它要从前往后计算，而实际上是从后往
-    * 前推的一个过程，所以这就完成了算子的合并和计算。这就是pipeline，使我们要的结果。
+    * 前推的一个过程，所以这就完成了算子的合并和计算。这就是pipeline，是我们要的结果。
     *
     * 展开的过程其实也是合并的过程，因为它是pipeline！
     *
     * 所谓pipeline计算是指由很多计算步骤但其实很多个步骤是作用于一份数据。若产生多份数据就不能称为pipeline。
     *
-    * 数据相当一个管道，算子在pipeline中流动进行第一步、第二步...计算，数据还是那些数据，pipeline只是计算的链条，因为实在同一个stage内部（窄依赖），所以它就正常完成了合并的过程，展开的过程就是合并的过程！
+    * 数据相当一个管道，算子在pipeline中流动进行第一步、第二步...计算，数据还是那些数据，pipeline只是计算的链条，因为是在同一个stage内部（窄依赖），所以它就正常完成了合并的过程，展开的过程就是合并的过程！
     *
     *【这是Spark比Hadoop快的基本性原因，Hadoop没有算子的pipeline而Spark有】
     *
@@ -596,7 +600,7 @@ class DAGScheduler(
 
     assert(partitions.size > 0)
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
-    val waiter = new JobWaiter(this, jobId, partitions.size, resultHandler)
+    val waiter = new JobWaiter[U](this, jobId, partitions.size, resultHandler)
 
     /**
       * func2为第一个
@@ -855,6 +859,8 @@ class DAGScheduler(
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
+			//为Job创建ResultStage并且划分所有ShuffleMapStage（父Stage链条）
+			//创建RDD失败的情况:若是基于hdfs的，若底层文件损坏或不存在时就会创建失败，会抛出异常
       finalStage = newResultStage(finalRDD, func, partitions, jobId, callSite)
     } catch {
       case e: Exception =>
@@ -879,6 +885,7 @@ class DAGScheduler(
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
+    //从此开始进行Task的运行调度
     submitStage(finalStage)
 
     submitWaitingStages()
@@ -919,6 +926,7 @@ class DAGScheduler(
     val stageInfos = stageIds.flatMap(id => stageIdToStage.get(id).map(_.latestInfo))
     listenerBus.post(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos, properties))
+		//通过回溯，递归调用submitStage函数将Task交由TaskScheduler调度
     submitStage(finalStage)
 
     // If the whole stage has already finished, tell the listener and remove it
@@ -929,7 +937,17 @@ class DAGScheduler(
     submitWaitingStages()
   }
 
-  /** Submits stage, but first recursively submits any missing parents. */
+  /**
+    * Submits stage, but first recursively submits any missing parents.
+    *
+    * 1、submitMissingTasks是指提交的没有前置Stage的任务，将其交给TaskScheduler进行具体的任务调度
+    * 2、submitStage会递归调用，进行回溯对前置Stage先进性调度，将依赖的Stage的Tasks交由TaskScheduler调度
+    *
+    * submitStage的执行结果是前面的Stage先进行计算，后面的Stage依赖于前面的Stage，既只有前面的Stage计算完毕后，后面的Stage才能继续执行下去。
+    *
+    * 说明: 所谓Missing就是说当前要进行计算了。
+    *
+    **/
   private def submitStage(stage: Stage) {
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
@@ -952,7 +970,12 @@ class DAGScheduler(
     }
   }
 
-  /** Called when stage's parents are available and we can now do its task. */
+  /**
+    * Called when stage's parents are available and we can now do its task.
+    *
+    *
+    *
+    **/
   //stage的构建：从最后一个Action往前推。事实上最后一个Action计算动作不算是Stage内部的工作！！
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
@@ -985,6 +1008,9 @@ class DAGScheduler(
         outputCommitCoordinator.stageStart(
           stage = s.id, maxPartitionId = s.rdd.partitions.length - 1)
     }
+    /**
+      * 数据本地性在底层任务运行前就已完成，实际是调用RDD.getPreferredLocations时完成的
+      */
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
       stage match {
         case s: ShuffleMapStage =>
@@ -1067,6 +1093,10 @@ class DAGScheduler(
         return
     }
 
+    /**
+      * 在submitMissingTasks方法中确定数据本地性后，DAGScheduler首先会进行Task序列化，
+      * 然后通过TaskSchedulerImple.submitTasks提交TaskSet去执行具体的Task计算。
+      */
     if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
@@ -1547,6 +1577,15 @@ class DAGScheduler(
    * This method is thread-safe because it only accesses DAGScheduler state through thread-safe
    * methods (getCacheLocs()); please be careful when modifying this method, because any new
    * DAGScheduler state accessed by it may require additional synchronization.
+   *
+   * (1)、从DAGScheduler中cacheLocs的内存数据结构中是否有该当前Partition的数据本地行信息，若有这直接返回；
+   * (2)、否则会调用RDD.getPreferedLocations（实现RDD必须要实现的方法，例如要让Spark运行在HBaae上或一种不支持的数据库，此时开发者自定义RDD，为了保证Task计算的数据本地性，最为关键的方式就是实现RDD的getPreferedLocations）获取Partition的的数据本地行信息，若有则返回。
+   * (3)、若上述都不存在，则从当前Partition的Parent Partition中找到第一个为Narrow Dependency的partition所在的数据本地行信息返回。
+   *
+   * DAGScheduler计算数据本地性时，巧妙借助RDD自身的getPreferredLocations中的数据，最大化的优化效率，
+   * 因为getPreferredLocations中表明了每个Partition的数据本地性，虽然当前Partition可能被persist
+   * 或checkpoint，但是persist或checkpoint默认情况下肯定是和getPreferredLocations中的Partition的
+   * 数据本地性是一致的，所以这就极大的简化Task数据本地性算法的实现和效率的优化。
    */
   private def getPreferredLocsInternal(
       rdd: RDD[_],
@@ -1563,6 +1602,7 @@ class DAGScheduler(
     if (cached.nonEmpty) {
       return cached
     }
+    //RDD实例化时就有数据本地性信息（数据本地性：数据在哪个节点上就在这个节点上的Executor上执行就行了）
     // If the RDD has some placement preferences (as is the case for input RDDs), get those
     val rddPrefs = rdd.preferredLocations(rdd.partitions(partition)).toList
     if (rddPrefs.nonEmpty) {

@@ -287,6 +287,11 @@ private[spark] class TaskSchedulerImpl(
    * Called by cluster manager to offer resources on slaves. We respond by asking our active task
    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
    * that tasks are balanced across the cluster.
+   *
+   *TaskScheduleruImpl.resourceOffers 根据WorkerOffer中可以用资源生成在每个Executor上可运行的任务集合Seq[Seq[TaskDesc]]
+   *  --》判断是否有新增Worker，若有这通知DAGScheduler可以尝试调度waiting或failed的Stage
+   *  --》rootPool.getSortedTaskSetQueue获取按优先级排序后的TaskSetManager任务列表，若新增Worker资源则重新计算TaskSetManager的本地性
+   *  --》根据可用资源、TaskSetManager的本地性获取可以执行的任务集合Seq[Seq[TaskDesc]]，并返回。
    */
   def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = synchronized {
     // Mark each slave as alive and remember its hostname
@@ -295,11 +300,14 @@ private[spark] class TaskSchedulerImpl(
     for (o <- offers) {
       executorIdToHost(o.executorId) = o.host
       executorIdToTaskCount.getOrElseUpdate(o.executorId, 0)
+      //host上所有的Executor集合
       if (!executorsByHost.contains(o.host)) {
         executorsByHost(o.host) = new HashSet[String]()
+        //有新增Worker资源，通知DAGScheduler可以尝试调度失败或等待的Stage
         executorAdded(o.executorId, o.host)
         newExecAvail = true
       }
+      //获取host所在机架位置，默认为None则会跳过该for语句
       for (rack <- getRackForHost(o.host)) {
         hostsByRack.getOrElseUpdate(rack, new HashSet[String]()) += o.host
       }
@@ -310,11 +318,18 @@ private[spark] class TaskSchedulerImpl(
     // Build a list of tasks to assign to each worker.
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
+    /**
+      * Pool为树形结构，FIFO调度模式下看可以看做TaskSetManger的集合，FAIR模式下叶子节点为TaskSetManager，分支节点为Pool。
+      * 排序得到的任务集合根据调度模式不同，默认FIFO模式会根据优先级、stageid进行排序返回TaskSetManager的集合。
+      */
     val sortedTaskSets = rootPool.getSortedTaskSetQueue
     for (taskSet <- sortedTaskSets) {
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
       if (newExecAvail) {
+        /**
+          * 当新增Worker资源时，需要重新计算TaskSetManager的本地性，并根据本地性级别决定TaskSetManager延迟调度的时间！
+          */
         taskSet.executorAdded()
       }
     }
@@ -325,6 +340,9 @@ private[spark] class TaskSchedulerImpl(
     var launchedTask = false
     for (taskSet <- sortedTaskSets; maxLocality <- taskSet.myLocalityLevels) {
       do {
+        /**
+          * 根据当前资源情况，更新每个Executor上可以运行的Task集合并返回能否执行任务的标志位（若tasks不为空则可以launchTask=true）；
+          */
         launchedTask = resourceOfferSingleTaskSet(
             taskSet, maxLocality, shuffledOffers, availableCpus, tasks)
       } while (launchedTask)

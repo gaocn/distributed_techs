@@ -30,6 +30,10 @@ import org.apache.spark.Logging
  *
  * Note: The event queue will grow indefinitely. So subclasses should make sure `onReceive` can
  * handle events in time to avoid the potential OOM.
+ *
+ * EventLoop内部有一个eventThread循环器不断地从阻塞式消息队列中取出消息后调用onReceive方法处理，
+ * 消息通过EventLoop.post方法添加到消息队列中
+ *
  */
 private[spark] abstract class EventLoop[E](name: String) extends Logging {
 

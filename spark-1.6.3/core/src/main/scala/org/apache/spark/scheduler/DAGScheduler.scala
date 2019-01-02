@@ -57,6 +57,7 @@ import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
  * inside it. The actual pipelining of these operations happens in the RDD.compute() functions of
  * various RDDs (MappedRDD, FilteredRDD, etc).
  *
+ *[数据本地性：DAGScheduler从RDD角度考虑数据本地性，TaskScheduler从Task角度考虑计算本地性]
  * In addition to coming up with a DAG of stages, the DAGScheduler also determines the preferred
  * locations to run each task on, based on the current cache status, and passes these to the
  * low-level TaskScheduler. Furthermore, it handles failures due to shuffle output files being
@@ -71,11 +72,11 @@ import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
  *    submitJob. Each Job may require the execution of multiple stages to build intermediate data.
  *
  *  - Stages ([[Stage]]) are sets of tasks that compute intermediate results in jobs, where each
- *    task computes the same function on partitions of the same RDD. Stages are separated at shuffle
+ *    task computes the same function on partitions of the same RDD.(2) Stages are separated at shuffle
  *    boundaries, which introduce a barrier (where we must wait for the previous stage to finish to
- *    fetch outputs). There are two types of stages: [[ResultStage]], for the final stage that
+ *    fetch outputs). (3)There are two types of stages: [[ResultStage]], for the final stage that
  *    executes an action, and [[ShuffleMapStage]], which writes map output files for a shuffle.
- *    Stages are often shared across multiple jobs, if these jobs reuse the same RDDs.
+ *    (4)Stages are often shared across multiple jobs, if these jobs reuse the same RDDs.
  *
  *  - Tasks are individual units of work, each sent to one machine.
  *
@@ -92,7 +93,7 @@ import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
  * To recover from failures, the same stage might need to run multiple times, which are called
  * "attempts". If the TaskScheduler reports that a task failed because a map output file from a
  * previous stage was lost, the DAGScheduler resubmits that lost stage. This is detected through a
- * CompletionEvent with FetchFailed, or an ExecutorLost event. The DAGScheduler will wait a small
+ * <CompletionEvent> with <FetchFailed>, or an <ExecutorLost> event. The DAGScheduler will wait a small
  * amount of time to see whether other nodes or tasks fail, then resubmit TaskSets for any lost
  * stage(s) that compute the missing tasks. As part of this process, we might also have to create
  * Stage objects for old (finished) stages where we previously cleaned up the Stage object. Since
@@ -106,6 +107,17 @@ import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
  *
  *  - When adding a new data structure, update `DAGSchedulerSuite.assertDataStructuresEmpty` to
  *    include the new structure. This will help to catch memory leaks.
+ *
+ *   -------------------------------
+ * |  DAGScheduler                 |
+ * |-------------------------------|
+ * | |-----------------------------|
+ * | |DAGSchedulerEventProcessLoop |
+ * | |  |--------------------------|
+ * | |  |        onReceive         |
+ * | |  |--------------------------|
+ * | |-----------------------------|
+ * DAGScheduler可以处理JobSubmitted、MapStageSubmitted、StageCancelled、JobCancelled、BeginEvent、CompletionEvent、ExecutorAdded、ExecutorLost、TaskSetFailed、ResubmitFailedStages不同类型的消息，内部通过一个logic thread读取并处理消息以保障同步。
  */
 private[spark]
 class DAGScheduler(
@@ -249,6 +261,7 @@ class DAGScheduler(
     eventProcessLoop.post(TaskSetFailed(taskSet, reason, exception))
   }
 
+  //获取RDD中不同分区的数据本地性信息TaskLocation<host, executorId>
   private[scheduler]
   def getCacheLocs(rdd: RDD[_]): IndexedSeq[Seq[TaskLocation]] = cacheLocs.synchronized {
     // Note: this doesn't use `getOrElse()` because this method is called O(num tasks) times
@@ -274,7 +287,7 @@ class DAGScheduler(
 
   /**
    * Get or create a shuffle map stage for the given shuffle dependency's map side.
-   */
+    */
   private def getShuffleMapStage(
       shuffleDep: ShuffleDependency[_, _, _],
       firstJobId: Int): ShuffleMapStage = {
@@ -704,7 +717,7 @@ class DAGScheduler(
     // This makes it easier to avoid race conditions between the user code and the map output
     // tracker that might result if we told the user the stage had finished, but then they queries
     // the map output tracker and some node failures had caused the output statistics to be lost.
-    val waiter = new JobWaiter(this, jobId, 1, (i: Int, r: MapOutputStatistics) => callback(r))
+    val waiter = new JobWaiter[](this, jobId, 1, (i: Int, r: MapOutputStatistics) => callback(r))
     eventProcessLoop.post(MapStageSubmitted(
       jobId, dependency, callSite, waiter, SerializationUtils.clone(properties)))
     waiter
@@ -973,10 +986,9 @@ class DAGScheduler(
   /**
     * Called when stage's parents are available and we can now do its task.
     *
-    *
+    *stage的构建：从最后一个Action往前推。事实上最后一个Action计算动作不算是Stage内部的工作！！
     *
     **/
-  //stage的构建：从最后一个Action往前推。事实上最后一个Action计算动作不算是Stage内部的工作！！
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
@@ -1010,7 +1022,7 @@ class DAGScheduler(
     }
     /**
       * 数据本地性在底层任务运行前就已完成，实际是调用RDD.getPreferredLocations时完成的
-      */
+    */
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
       stage match {
         case s: ShuffleMapStage =>

@@ -258,8 +258,19 @@ private[spark] class TaskSchedulerImpl(
     for (i <- 0 until shuffledOffers.size) {
       val execId = shuffledOffers(i).executorId
       val host = shuffledOffers(i).host
+
+      /**
+        * 准入规则的计算，CPUS_PER_TASK默认为1，每个Task默认采用一个线程进行计算
+        */
       if (availableCpus(i) >= CPUS_PER_TASK) {
         try {
+          /**
+            * 通过调用TaskSetManager.resourceOffer方法最终确定每个Task具体运行在哪个ExecutorBackend的具体的LocalityLevel。
+            *
+            *DAGScheduler是从数据（RDD）层面考虑preferedLocation的，而TaskScheduler是从具体计算Task角度考虑计算的本地性；所以说DAGScheduler高层调度，而TaskScheduler是更具体的底层调度，所以这两者配合，一个是RDD、一个是Task。
+            *
+            * 本地性的两个层面：数据本地性，计算本地性！！
+            */
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
             tasks(i) += task
             val tid = task.taskId
@@ -314,11 +325,17 @@ private[spark] class TaskSchedulerImpl(
     }
 
     // Randomly shuffle offers to avoid always placing tasks on the same set of workers.
+    // 通过Random.shuffle方法重新洗牌所有的计算资源以寻求计算的负载均衡
     val shuffledOffers = Random.shuffle(offers)
     // Build a list of tasks to assign to each worker.
+    /**
+      * 根据每个ExecutorBackend的cores个数声明类型为TaskDescription的ArrayBuffer数组，
+      * 数组中可以有多少个TaskDescription ExecutorBackend就可以运行多少个任务（可并行运行多少Task）
+      */
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
     /**
+      * 按照一定调度算法决定具体每个Stage中TaskSet调用的优先顺序。
       * Pool为树形结构，FIFO调度模式下看可以看做TaskSetManger的集合，FAIR模式下叶子节点为TaskSetManager，分支节点为Pool。
       * 排序得到的任务集合根据调度模式不同，默认FIFO模式会根据优先级、stageid进行排序返回TaskSetManager的集合。
       */
@@ -328,6 +345,7 @@ private[spark] class TaskSchedulerImpl(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
       if (newExecAvail) {
         /**
+          * 若有新的ExecutorBackend分配给我们的Job，此时会调用ExecutorAdded来获取最新的完整的可用计算资源。
           * 当新增Worker资源时，需要重新计算TaskSetManager的本地性，并根据本地性级别决定TaskSetManager延迟调度的时间！
           */
         taskSet.executorAdded()
@@ -337,10 +355,16 @@ private[spark] class TaskSchedulerImpl(
     // Take each TaskSet in our scheduling order, and then offer it each node in increasing order
     // of locality levels so that it gets a chance to launch local tasks on all of them.
     // NOTE: the preferredLocality order: PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
+    /**
+      * 数据本地性优先级由高到低为：PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
+      * NO_PREF与ANY的区别？NO_PREF是指机器本地性，一个机器可能会有多个NODE。
+      */
     var launchedTask = false
+    //通过下述代码追求最高优先级本地性
     for (taskSet <- sortedTaskSets; maxLocality <- taskSet.myLocalityLevels) {
       do {
         /**
+          * 对TaskSet任务进行数据本地性的确定
           * 根据当前资源情况，更新每个Executor上可以运行的Task集合并返回能否执行任务的标志位（若tasks不为空则可以launchTask=true）；
           */
         launchedTask = resourceOfferSingleTaskSet(

@@ -32,15 +32,21 @@ import org.apache.spark.Logging
  * handle events in time to avoid the potential OOM.
  *
  * EventLoop内部有一个eventThread循环器不断地从阻塞式消息队列中取出消息后调用onReceive方法处理，
- * 消息通过EventLoop.post方法添加到消息队列中
+ * 消息通过EventLoop.post方法添加到消息队列中。
  *
  */
 private[spark] abstract class EventLoop[E](name: String) extends Logging {
-
+	//类型参数E代表事件类型，不同实现类可以用于处理不同事件！
   private val eventQueue: BlockingQueue[E] = new LinkedBlockingDeque[E]()
 
   private val stopped = new AtomicBoolean(false)
 
+	/**
+		* 为什么要开辟一个线程？
+		* 1、支持异步处理多个Job；
+		* 2、从编程架构看，无论自己的消息还是别人消息都采用消息循环器处理，这个时候处理方式是统一的，
+		*   逻辑和思路就是一致的，这样扩展性就会非常好，解耦合，也有利于代码的简洁。
+		*/
   private val eventThread = new Thread(name) {
     setDaemon(true)
 

@@ -35,7 +35,8 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{Clock, SystemClock, Utils}
 
 /**
- * 延迟调度和数据本地性紧密相关，做调度时所有的努力都是尽量保证数据在当前机器的内存中，这样就不会存在网络IO、磁盘IO。所以所有的调度都是为了追求这样的一种本地性，在这个基础之上就产生了延迟调度。延迟调度的目的就是为了最大化的本地性而进行的延迟或等待。
+ * 延迟调度和数据本地性紧密相关，做调度时所有的努力都是尽量保证数据在当前机器的内存中，这样就不会存在网络IO、磁盘IO。
+ * 所以所有的调度都是为了追求这样的一种本地性，在这个基础之上就产生了延迟调度。延迟调度的目的就是为了最大化的本地性而进行的延迟或等待。
  * 延迟调度：在进行任务调度时，假设数据在当前节点的内存中，但是要执行与该数据相关的任务却没有资源，因此只能延迟或等待任务被分配到该节点上。
  * Task要工作要依赖TaskSetManager，TaskSetManager负责TaskSet的本地性调度。
  *
@@ -44,8 +45,8 @@ import org.apache.spark.util.{Clock, SystemClock, Utils}
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
  * each task, retries tasks if they fail (up to a limited number of times), and
  * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
- * to it are resourceOffer, which asks the TaskSet whether it wants to run a task on one node,
- * and statusUpdate, which tells it that one of its tasks changed state (e.g. finished).
+ * to it are <resourceOffer>, which asks the TaskSet whether it wants to run a task on one node,
+ * and <statusUpdate>, which tells it that one of its tasks changed state (e.g. finished).
  *
  * THREADING: This class is designed to only be called from code with a lock on the
  * TaskScheduler (e.g. its event handlers). It should not be called from other threads.
@@ -832,7 +833,7 @@ private[spark] class TaskSetManager(
    * TODO: To make this scale to large jobs, we need to maintain a list of running tasks, so that
    * we don't scan the whole task set. It might also help to make this sorted by launch time.
    */
-  override def checkSpeculatableTasks(): Boolean = {
+  override def checkSpeculatableTasks(): Boolean =   {
     // Can't speculate if we only have one task, and no need to speculate if the task set is a
     // zombie.
     if (isZombie || numTasks == 1) {

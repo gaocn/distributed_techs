@@ -61,7 +61,11 @@ class SparkEnv ( //SparkEnv包含了整个Spark运行实例的上下文信息，
                //SparkConf相当于方向盘、速度等，SparkContext相当于发动机引擎，SparkEnv相当于车上的整体环境上下文
     val executorId: String,
     private[spark] val rpcEnv: RpcEnv,
-    //java线程的本质：基于全局变量加锁机制下的多线程操作，而Scala看到其中的死锁问题，提出了Actor基于Share-Nothing的消息通信多线程，彼此互不影响。
+
+ /**
+   * java线程的本质
+   * 基于全局变量加锁机制下的多线程操作，而Scala看到其中的死锁问题，提出了Actor基于Share-Nothing的消息通信多线程，彼此互不影响。
+   */
     _actorSystem: ActorSystem, // TODO Remove actorSystem
     val serializer: Serializer,
     val closureSerializer: Serializer,

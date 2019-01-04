@@ -39,6 +39,13 @@ private[spark] class BroadcastManager(
   private def initialize() {
     synchronized {
       if (!initialized) {
+        /**
+          * 面向对象的封装(Encapsulation)和分派(Delegation)告诉我们，尽量将长的代码分派“切割”成每段，
+          * 将每段再“封装”起来(减少段和段之间耦合联系性)，这样，就会将风险分散，以后如果需要修改，只要更
+          * 改每段，不会再发生牵一动百的事情。
+          *
+          * 工厂模式：将创建实例的工作与使用实例的工作分开!
+          */
         val broadcastFactoryClass =
           conf.get("spark.broadcast.factory", "org.apache.spark.broadcast.TorrentBroadcastFactory")
 

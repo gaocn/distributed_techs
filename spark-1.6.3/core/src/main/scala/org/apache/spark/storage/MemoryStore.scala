@@ -43,6 +43,14 @@ private[spark] class MemoryStore(blockManager: BlockManager, memoryManager: Memo
   private val conf = blockManager.conf
   private val entries = new LinkedHashMap[BlockId, MemoryEntry](32, 0.75f, true)
 
+  /**
+    * RDD按照分片处理一般数据是通过iterator提供，RDD在计算时是一条条处理，在处理时一般是把iterator变为
+    * 数组，而数组在内存中，当内存不足时就需要unroll（不能一次性把iterator中的数据放在数组中），unroll
+    * 会不断检查内存是否能够存放下一条数据……。unroll的内存空间是从StorageMemory中获得的。若StorageMemory
+    * 不足以存放RDD中的所有数据时，unroll会放尽可能多的数据到StorageMemory中，为了防止unroll占用过多内存
+    * 空间，Spark通过spark.storage.unrollFraction=0.2配置unroll过程占用空间比例。若unroll过程失败，就
+    * 会把将所有数据spill到磁盘中。
+    */
   // A mapping from taskAttemptId to amount of memory used for unrolling a block (in bytes)
   // All accesses of this map are assumed to have manually synchronized on `memoryManager`
   private val unrollMemoryMap = mutable.HashMap[Long, Long]()

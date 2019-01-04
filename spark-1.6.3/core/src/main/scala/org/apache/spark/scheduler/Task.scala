@@ -58,7 +58,7 @@ private[spark] abstract class Task[T](
   type AccumulatorUpdates = Map[Long, Any]
 
   /**
-   * Called by [[Executor]] to run this task.
+   * Called by [[org.apache.spark.executor.Executor]] to run this task.
    *
    * @param taskAttemptId an identifier for this task attempt that is unique within a SparkContext.
    * @param attemptNumber how many times this task has been attempted (0 for the first attempt)

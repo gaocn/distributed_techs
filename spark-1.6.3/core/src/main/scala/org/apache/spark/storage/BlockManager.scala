@@ -181,6 +181,7 @@ private[spark] class BlockManager(
    * service if configured.
    */
   def initialize(appId: String): Unit = {
+    //网络传输数据，连接另一个BlockManager进行数据的读写操作
     blockTransferService.init(this)
     shuffleClient.init(appId)
 
@@ -193,7 +194,7 @@ private[spark] class BlockManager(
     } else {
       blockManagerId
     }
-
+    //向Driver中的BlockManagerMaster进行注册
     master.registerBlockManager(blockManagerId, maxMemory, slaveEndpoint)
 
     // Register Executors' configuration with the local shuffle service, if one should exist.

@@ -17,7 +17,7 @@
 # limitations under the License.
 #
 # 确保spark home存在
-if [ -z "${SPARK_HOME}" ]; then
+if [[ -z "${SPARK_HOME}" ]]; then
   export SPARK_HOME="$(cd "`dirname "$0"`"/..; pwd)"
 fi
 
@@ -25,10 +25,10 @@ fi
 . "${SPARK_HOME}"/bin/load-spark-env.sh
 
 # Find the java binary
-if [ -n "${JAVA_HOME}" ]; then
+if [[ -n "${JAVA_HOME}" ]]; then
   RUNNER="${JAVA_HOME}/bin/java"  # RUNNER 通过java命令运行
 else
-  if [ `command -v java` ]; then
+  if [[ `command -v java` ]]; then
     RUNNER="java"
   else
     echo "JAVA_HOME is not set" >&2
@@ -38,7 +38,7 @@ fi
 
 # Find assembly jar 程序运行时需要JAR依赖
 SPARK_ASSEMBLY_JAR=
-if [ -f "${SPARK_HOME}/RELEASE" ]; then
+if [[ -f "${SPARK_HOME}/RELEASE" ]]; then
   ASSEMBLY_DIR="${SPARK_HOME}/lib"
 else
   ASSEMBLY_DIR="${SPARK_HOME}/assembly/target/scala-$SPARK_SCALA_VERSION"
@@ -46,15 +46,15 @@ fi
 
 GREP_OPTIONS=
 num_jars="$(ls -1 "$ASSEMBLY_DIR" | grep "^spark-assembly.*hadoop.*\.jar$" | wc -l)"
-if [ "$num_jars" -eq "0" -a -z "$SPARK_ASSEMBLY_JAR" -a "$SPARK_PREPEND_CLASSES" != "1" ]; then
+if [[ "$num_jars" -eq "0" && -z "$SPARK_ASSEMBLY_JAR" && "$SPARK_PREPEND_CLASSES" != "1" ]]; then
   echo "Failed to find Spark assembly in $ASSEMBLY_DIR." 1>&2
   echo "You need to build Spark before running this program." 1>&2
   exit 1
 fi
 # 若存在超过两个以上的spark-assembly*程序，则不运行！
-if [ -d "$ASSEMBLY_DIR" ]; then
+if [[ -d "$ASSEMBLY_DIR" ]]; then
   ASSEMBLY_JARS="$(ls -1 "$ASSEMBLY_DIR" | grep "^spark-assembly.*hadoop.*\.jar$" || true)"
-  if [ "$num_jars" -gt "1" ]; then
+  if [[ "$num_jars" -gt "1" ]]; then
     echo "Found multiple Spark assembly jars in $ASSEMBLY_DIR:" 1>&2
     echo "$ASSEMBLY_JARS" 1>&2
     echo "Please remove all but one jar." 1>&2
@@ -67,7 +67,7 @@ SPARK_ASSEMBLY_JAR="${ASSEMBLY_DIR}/${ASSEMBLY_JARS}"
 LAUNCH_CLASSPATH="$SPARK_ASSEMBLY_JAR"
 
 # Add the launcher build dir to the classpath if requested.
-if [ -n "$SPARK_PREPEND_CLASSES" ]; then
+if [[ -n "$SPARK_PREPEND_CLASSES" ]]; then
   LAUNCH_CLASSPATH="${SPARK_HOME}/launcher/target/scala-$SPARK_SCALA_VERSION/classes:$LAUNCH_CLASSPATH"
 fi
 
@@ -84,7 +84,14 @@ fi
 # an array that will be used to exec the final command.
 CMD=()
 # scala本身的运行时依赖java的
+# -d  option causes read to continue until the first character of DELIM is read, rather than newline.
+# -r  option is given, this signifies `raw' input, and backslash escaping is disabled.
+# IFS Determine the internal field separators used to delimit fields.
+# <(echo "hello world") 会生成一个文件描述符如：/dev/fd/63用于reading
 while IFS= read -d '' -r ARG; do
   CMD+=("$ARG")
 done < <("$RUNNER" -cp "$LAUNCH_CLASSPATH" org.apache.spark.launcher.Main "$@")
+
+#/var/e3capp/jdk1.8.0_121/bin/java -cp /var/e3capp/spark-2.3.1-bin-hadoop2.6/conf/:/var/e3capp/spark-2.3.1-bin-hadoop2.6/jars/*:/var/e3capp/hadoop-2.6.5/etc/hadoop/ -Dspark.deploy.recoveryMode=ZOOKEEPER -Dspark.deploy.zookeeper.url=10.230.150.174:2182,10.230.150.175:2182,10.230.150.176:2182 -Dspark.deploy.zookeeper.dir=/spark -Xmx1g org.apache.spark.deploy.worker.Worker --webui-port 8081 spark://HQxTSL-150175:7077
+
 exec "${CMD[@]}"

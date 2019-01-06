@@ -92,6 +92,7 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
    * Read the content of the checkpoint file associated with the given partition.
    */
   override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+    //使用Hadoop API： Path创建一个HDFS文件路径，然后用readCheckpointFile读取HDFS文件中的数据
     val file = new Path(checkpointPath, ReliableCheckpointRDD.checkpointFileName(split.index))
     ReliableCheckpointRDD.readCheckpointFile(file, broadcastedConf, context)
   }
@@ -271,6 +272,7 @@ private[spark] object ReliableCheckpointRDD extends Logging {
     val env = SparkEnv.get
     val fs = path.getFileSystem(broadcastedConf.value.value)
     val bufferSize = env.conf.getInt("spark.buffer.size", 65536)
+    //调用FileInputStream打开HDFS文件的输入流，然后对输入流进行反序列化，最后将读出的数据转换为Iterator对象
     val fileInputStream = fs.open(path, bufferSize)
     val serializer = env.serializer.newInstance()
     val deserializeStream = serializer.deserializeStream(fileInputStream)

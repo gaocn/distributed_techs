@@ -167,6 +167,8 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
        * Otherwise, we may cause an OOM exception if the JVM does not have enough space for this
        * single partition. Instead, we unroll the values cautiously, potentially aborting and
        * dropping the partition to disk if applicable.
+       *
+       * 根据unrollSafely方法结果：若能将数据写入内存，若写入；若不能则写入磁盘文件。
        */
       blockManager.memoryStore.unrollSafely(key, values, updatedBlocks) match {
         case Left(arr) =>
@@ -177,6 +179,7 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
         case Right(it) =>
           // There is not enough space to cache this partition in memory
           val returnValues = it.asInstanceOf[Iterator[T]]
+          //如果数据无法写入内存，则首先判断数据是否有磁盘存储级别，若有，则将数据写入磁盘
           if (putLevel.useDisk) {
             logWarning(s"Persisting partition $key to disk instead.")
             val diskOnlyLevel = StorageLevel(useDisk = true, useMemory = false,

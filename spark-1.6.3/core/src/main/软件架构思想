@@ -4,3 +4,31 @@
 【以spark为例】
 Spark架构的构成：SparkContext--》Driver、Interface、Tire。
 Spark应用程序分为两部分：driver和executors内部关于rdd的处理，spark要运行job一定要有SparkContext，因为SparkContext是工程师写的程序与Spark集群交互的唯一入口，其中SparkContext中的Driver负责和集群交互。而Driver中的什么和集群交互：调度器（框架层面），框架通过接口调用工程师写的代码实现功能。
+
+
+RPC远程过程调用
+常见应用：DWR、Dubbo（除了基本的RPC功能外，还提供服务治理、服务发现和负债均衡）、Dubbox、gRPC、thrift、webservice、cxf、rmi等
+
+1、构建一个简单的RPC远程过程调用框架（Client/Server模式）
+细节：服务端提供一个简单的接口，接口定义了一个say方法，客户端远程连接到服务端并调用服务端say方法。
+问题：Java中一个方法比较重要的属性<方法名，参数类型，参数值，返回值>，通过API进行交互会面临的问题是接口与实现类不在一个应用中，应该解决？【动态代理模式】
+技术点：
+java 反射
+java NIO Future异步线程
+netty 远程通信/数据传输协议
+google guava动态代理
+hessian序列化
+
+RPC与HTTP？RPC基于TCP的协议，而HTTP是应用层协议，
+dubbo的rest接口是依赖于tomcat等web容器实现，使用spring boot,spring-cloud。
+
+
+代码实现思路（三个核心模块）：
+（1）、Client，远程客户端模块，发送一个请求到远程服务端；
+（2）、Common，客户端/服务端通用模块，构造远程request和respons对象、序列化与反序列化、编解码等；
+（3）、Server，远程服务端模块，接收远程客户端请求，处理请求逻辑并响应结果到客户端；
+
+
+https://www.cnblogs.com/codingexperience/p/5930752.html
+
+RPC通讯细节设计与编解码

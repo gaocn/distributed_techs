@@ -272,7 +272,9 @@ private[spark] class TaskSchedulerImpl(
             * 本地性的两个层面：数据本地性，计算本地性！！
             */
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
+            //利用本地化级别LocalityLevel模型优化Tasks的分配确定Task执行的位置，然后将其分配给对应的Executors。
             tasks(i) += task
+
             val tid = task.taskId
             taskIdToTaskSetManager(tid) = taskSet
             taskIdToExecutorId(tid) = execId
@@ -358,14 +360,21 @@ private[spark] class TaskSchedulerImpl(
     /**
       * 数据本地性优先级由高到低为：PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
       * NO_PREF与ANY的区别？NO_PREF是指机器本地性，一个机器可能会有多个NODE。
+      *
+      * PROCESS_LOCAL: RDD的Partition和Task在同一个Executor内部，计算速度最快；
+      * NODE_LOCAL:    RDD的Partition和Task不在同一个Executor内部，不在同一个进程但是在同一个Worker节点上；
+      * NO_PREF:       没有所谓的本地化级别，指机器本地性；
+      * RACK_LOCAL:    RDD的Partition和Task在同一个机架上；
+      * ANY:           任意的本地化级别
       */
     var launchedTask = false
-    //通过下述代码追求最高优先级本地性
+    //通过下述代码追求最高优先级本地性，遍历每一个taskSet，每一个本地化级别
     for (taskSet <- sortedTaskSets; maxLocality <- taskSet.myLocalityLevels) {
       do {
         /**
           * 对TaskSet任务进行数据本地性的确定
           * 根据当前资源情况，更新每个Executor上可以运行的Task集合并返回能否执行任务的标志位（若tasks不为空则可以launchTask=true）；
+          * 对于每一个TaskSet找到一个可以运行的本地化级别让当前TaskSet能够在Executors上运行！
           */
         launchedTask = resourceOfferSingleTaskSet(
             taskSet, maxLocality, shuffledOffers, availableCpus, tasks)

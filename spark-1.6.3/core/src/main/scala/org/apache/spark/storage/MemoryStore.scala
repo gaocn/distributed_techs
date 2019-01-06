@@ -298,6 +298,10 @@ private[spark] class MemoryStore(blockManager: BlockManager, memoryManager: Memo
             val amountToRequest = (currentSize * memoryGrowthFactor - memoryThreshold).toLong
             keepUnrolling = reserveUnrollMemoryForThisTask(
               blockId, amountToRequest, droppedBlocks)
+            /**
+              * 反复循环判断，只要还有数据没有写入内存，并且可以继续尝试玩内存中写，则就判断如果
+              * 内存大小不够存放数据，调用reserveUnrollMemoryForThisTask方法尝试清空一些空间
+              */
             if (keepUnrolling) {
               pendingMemoryReserved += amountToRequest
             }

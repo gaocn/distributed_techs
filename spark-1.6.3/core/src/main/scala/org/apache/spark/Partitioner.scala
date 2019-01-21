@@ -33,8 +33,8 @@ import scala.util.hashing.byteswap32
  * An object that defines how the elements in a key-value pair RDD are partitioned by key.
  * Maps each key to a partition ID, from 0 to `numPartitions - 1`.
   *
-  *Spark的Shuffle过程需要依赖分区器partitioner，主要用于RDD数据的重分步，常用的数据分区器有两类：
-  * HashPartitioner和RangePartitioner,其中HashPartitioner根据RDD中key的hashcode值进行分区，
+  *Spark的Shuffle过程需要依赖分区器partitioner，主要用于RDD数据的重分布，常用的数据分区器有两类：
+  * HashPartitioner和RangePartitioner,其中HashPartitioner根据RDD中key的hashCode值进行分区，
   * 而RangePartitioner根据范围进行数据分区。
   *
  */
@@ -58,7 +58,13 @@ object Partitioner {
    * be least likely to cause out-of-memory errors.
    *
    * We use two method parameters (rdd, others) to enforce callers passing at least 1 RDD.
-   */
+   *
+   * 从RDD中获取默认Partitioner，若没有则新建HashPartitioner，新建Partitioner的
+   * 分区数为RDD中的${spark.default.parallelism}或上游RDD的分区数
+   * 1、若给定的RDD中有partitioner，则从中选择中选一个RDD的partitioner；
+   * 2、若没有，新建HashPartitioner并将numPartitions设置为默认配置${spark.default.parallelism}
+   * 3、若spark.default.parallelism没有设置，则从依赖RDDs中选择分区最大的那个RDD的分区数作为新建分区的分区数；
+   **/
   def defaultPartitioner(rdd: RDD[_], others: RDD[_]*): Partitioner = {
     val bySize = (Seq(rdd) ++ others).sortBy(_.partitions.size).reverse
     for (r <- bySize if r.partitioner.isDefined && r.partitioner.get.numPartitions > 0) {
@@ -121,6 +127,25 @@ class HashPartitioner(partitions: Int) extends Partitioner {
  * as the `partitions` parameter, in the case where the number of sampled records is less than
  * the value of `partitions`.
   *
+	* Naive Method => O(NlogN)
+	* Ideally you could just collect all the RDD data, sort it, and determine range bounds that
+	* divide our sorted collection into nPartitions chunks.
+	*
+	* But we don't need our partitions to be exactly balanced as they will be after my terrible
+	* collect-and-sort implementation.As long as our partitions end up reasonably balanced, we're
+	* in the clear. If we can use an algorithm that gives us approximate quantile boundaries but
+	* is faster to run, this is probably a win
+	*
+	* Needs: an efficient algorithm that runs quickly and doesn't take too much memory
+	* Algorithm:  Reservoir sampling
+	*
+	* If your collection has 1B elements and you sample 1M, the 10th percentile of your 1M elements
+	* is approximately equal to the 10th percentile of your 1B. You can do exactly the same
+	* collect-and-sort algorithm to determine range bounds, but on a reduced randomly-sampled
+	* subset of the full data.
+	*
+	*
+	* 论文：The Power of Choice in Data-Aware Cluster Scheduling
   * RangePartitioner用于RDD的数据排序相关API中，会尽量保证每个分区中的数量的均匀，该分区器要求RDD中的KEY类型必
   * 须是可以排序的。
   * 【实现步骤】
@@ -150,10 +175,15 @@ class RangePartitioner[K : Ordering : ClassTag, V](
       // This is the sample size we need to have roughly balanced output partitions, capped at 1M.
       // 给定总的数据抽样大小，最多1M的数据量(10^6)，最少20倍的RDD分区数量，也就是每个RDD分区至少抽取40条数据
       val sampleSize = math.min(20.0 * partitions, 1e6)
-      /*Assume the input partitions are roughly balanced and over-sample a little bit.
-        计算每个分区抽取的数据量大小， 假设输入数据每个分区分布的比较均匀
-        对于超大数据集(分区数超过5万的)乘以3会让数据稍微增大一点，对于分区数低于5万的数据集，每个分区抽取数据量为60条也不算多
-        乘3.0的目的：依赖的父RDD数据本身可能是不均匀的，可保证数据量小的分区抽样足够的数据，数据量大分区能够进行二次采样*/
+			/** Assume the input partitions are roughly balanced and over-sample a little bit.
+				*
+				* 计算每个分区抽取的数据量大小， 假设输入数据每个分区分布的比较均匀
+				* 对于超大数据集(分区数超过5万的)乘以3会让数据稍微增大一点，对于分区数低于5万的数据集，每个分区抽取数据量为60条也不算多
+				* 乘3.0的目的：依赖的父RDD数据本身可能是不均匀的，可保证数据量小的分区抽样足够的数据，数据量大分区能够进行二次采样
+				* We know that partition sizes vary a bit, but assume that they don't vary too much. By sampling 3x
+				* more values from each partition than we would need if they were perfectly balanced, we can tolerate
+				* more partition imbalance.
+				*/
       val sampleSizePerPartition = math.ceil(3.0 * sampleSize / rdd.partitions.size).toInt
       // 从rdd中抽取数据，返回值:(总rdd数据量， Array[分区id，当前分区的数据量，当前分区抽取的数据])
       val (numItems, sketched) = RangePartitioner.sketch(rdd.map(_._1), sampleSizePerPartition)
@@ -300,8 +330,8 @@ class RangePartitioner[K : Ordering : ClassTag, V](
   * 2. 计算总体的数据抽样大小sampleSize，计算规则是：至少每个分区抽取20个数据或者最多1M的数据量；
   * 3. 根据sampleSize和分区数量计算每个分区的数据抽样样本数量sampleSizePrePartition；
   * 4. 调用RangePartitioner的sketch函数进行数据抽样，计算出每个分区的样本；
-  * 5. 计算样本的整体占比以及数据量过多的数据分区，防止数据倾斜；
-  * 6. 对于数据量比较多的RDD分区调用RDD的sample函数API重新进行数据抽取；
+  * 5. 计算样本的整体占比以及数据量过少的数据分区，防止数据倾斜；
+  * 6. 合并数据量过少的分区为新的RDD，并调用RDD的sample函数重新进行数据抽样；
   * 7. 将最终的样本数据通过RangePartitoner的determineBounds函数进行数据排序分配，计算出rangeBounds；
   */
 private[spark] object RangePartitioner {
@@ -337,6 +367,8 @@ private[spark] object RangePartitioner {
    * items each represents. Usually this is 1 over the probability used to sample this candidate.
    *
    * @param candidates unordered candidates with weights
+	 *            1、分区数据满足抽样条件的元素权重为1；
+	 *            2、分区数据量少的元素经过合并重新抽样后，权重大于1；
    * @param partitions number of partitions
    * @return selected bounds
    */

@@ -732,7 +732,7 @@ object SparkSubmit {
     }
 
     try {
-      /** 采用反射调用 org.apache.spark.repl.Main中的满方法可以开启spark-shell应用程序 */
+      /** 采用反射调用 org.apache.spark.repl.Main中的main方法可以开启spark-shell应用程序 */
       mainMethod.invoke(null, childArgs.toArray)
     } catch {
       case t: Throwable =>

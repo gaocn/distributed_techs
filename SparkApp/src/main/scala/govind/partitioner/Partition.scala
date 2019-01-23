@@ -8,4 +8,6 @@ trait Partition extends {
 	// A better default implementation of HashCode
 	override def hashCode(): Int = index
 
+
+	override def toString = s"Partition($index)"
 }

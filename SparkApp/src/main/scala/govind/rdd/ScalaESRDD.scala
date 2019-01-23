@@ -24,12 +24,11 @@ import org.apache.spark.{SparkContext, TaskContext}
 	*/
 abstract class ScalaESRDD[T](@transient sc: SparkContext) extends AbstractESRDD(sc){
 //	override def compute(split: Partition, context: TaskContext): Iterator[T] = {
-//		new ScalaESIterator[T](
+//		val iterator = new ScalaESIterator[T](
 //			split.asInstanceOf[ESPartition].esPartiton,
 //			context,
 //			esConf
 //		)
-//	}
 }
 
 class ScalaESIterator[T](split: ESPartitionInfo, context: TaskContext, esConf: ESConf) extends AbstractESRDDIterator[T](context, split, esConf) {

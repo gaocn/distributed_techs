@@ -148,8 +148,38 @@ private[spark] class CoalescedRDD[T: ClassTag](
  * bins. If two bins are within the slack in terms of balance, the algorithm will assign partitions
  * according to locality. (contact alig for questions)
  *
+ * 【coupon collector's problem--优惠券收集问题】
+ * 问题描述：总共有N类优惠券，每次可以取一张优惠券(有放回)，若能齐集N类则可获得大奖，那么平均需要多少次可以取到所有类型优惠券？
+ * 类似题目1：一个袋子里放N个不同的球，有放回的取球。请问期望用多少次可以取到所有不同的球？
+ * 类似题目2：一个有理想抱负的女生交男朋友，交到所有12个星座的男朋友的期望是多少？
+ * 类似题目3：为了集齐108将，你得吃多少袋干脆面？
+ * 类似问题4：1米长路面，每次下一滴雨覆盖0.01米的路面，落点均匀分布，问路面被完全覆盖需要多少滴雨？
+ *
+ * 第i次尝试：假设已经取到了i-1种优惠券，则第i次尝试取与已有不同的优惠券的概率为：(N - (i - 1))/N
+ *
+ * 服从几何分布（Geometric Distribution）
+ * 在N次伯努力实验中，实验k次才得到第一次成功的概率，假设每次试验中事件A发生的概率为p，则有：
+ * [[ X~G(p) 记 P(X=k) = (1 - p)^(k-1)*p ]] 期望为：1/p
+ *
+ * 设E(Xi)为取到第i种优惠券的期望值，则要得到N种优惠券的期望值E(X)，则有：
+ *  E(X) = E(X1) + E(X2) + ... + E(Xn) = 1/p1 + 1/p2 + ... +1/pn
+ * 其中pi为取到第i种优惠券的概率，则有p1 = n/n, p2 = n-1/n ... 1/n
+ *  E(X) = E(X1) + E(X2) + ... + E(Xn)
+ *       = n(1 + 1/2 + 1/3 + ... + 1/n)
+ *       = n*log(n)
+ * 其中(1 + 1/2 + 1/3 + ... + 1/n)为调和级数(harmonic progression)，结果为：log(n)
+ *
+ * 【Power of two choices in randomized load balancing】
+ * There are M balls and N bins. A load of a bin is the number of balls the bin has.
+ *
+ * Power of Two Choices：每一次任意选择两个队列，并从这两个队列中选择处理能力更好（least conn,least delay,...）的一个。
+ * 时间复杂度：
+ * 任意选择一个队列=O(log num_of_queues)
+ * 该算法保证队列的最大负载为：O(log log num_of_queues)
+ * 优势：Server-Load-Aware,Easy to Implement
+ * 劣势：Need to Collect Global Load Info of Queues
+ *
  */
-
 private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack: Double) {
 
   def compare(o1: PartitionGroup, o2: PartitionGroup): Boolean = o1.size < o2.size
@@ -234,12 +264,45 @@ private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack:
    * Initializes targetLen partition groups and assigns a preferredLocation
    * This uses coupon collector to estimate how many preferredLocations it must rotate through
    * until it has seen most of the preferred locations (2 * n log(n))
-   * @param targetLen
+   * 1、分区数大于存有分区的机器数，设targetLen=5，hostLen=3
+   * host1                     第一次循环          第二次循环
+   * ------------------        -----------        -----------
+   * |  P1   P2   P3  |        |   PG1   |        |   PG4   |
+   * |   P4    P5     |        -----------        -----------
+   * ------------------
+   * host2
+   * ------------------        -----------        -----------
+   * |    P6    P7    |        |   PG2   |        |   PG3   |
+   * |       P8       |        -----------        -----------
+   * ------------------
+   * host3
+   * ------------------        -----------
+   * |   P9   P10     |        |   PG3   |
+   * ------------------        -----------
+   *
+   * 2、分区数不于存有分区的机器数，设targetLen=3，hostLen=3
+   * host1                     第一次循环         第二次循环跳过
+   * ------------------        -----------
+   * |  P1   P2   P3  |        |   PG1   |
+   * |   P4    P5     |        -----------
+   * ------------------
+   * host2
+   * ------------------        -----------
+   * |    P6    P7    |        |   PG2   |
+   * |       P8       |        -----------
+   * ------------------
+   * host3
+   * ------------------        -----------
+   * |   P9   P10     |        |   PG3   |
+   * ------------------        -----------
+   *
+    * @param targetLen
    */
   def setupGroups(targetLen: Int) {
     val rotIt = new LocationIterator(prev)
 
     // deal with empty case, just create targetLen partition groups with no preferred location
+    //RDD没有本地性数据，则直接targetLen个不包含本地性数据的分组
     if (!rotIt.hasNext) {
       (1 to targetLen).foreach(x => groupArr += PartitionGroup())
       return
@@ -248,6 +311,8 @@ private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack:
     noLocality = false
 
     // number of iterations needed to be certain that we've seen most preferred locations
+    //为了能够遍历所有的preferred locations所需要进行的尝试次数 O(NlogN)
+    //当targetLen >> preferredLocations，没必要遍历所有分区的locations,因为很多都是重复，
     val expectedCoupons2 = 2 * (math.log(targetLen)*targetLen + targetLen + 0.5).toInt
     var numCreated = 0
     var tries = 0
@@ -266,7 +331,7 @@ private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack:
         numCreated += 1
       }
     }
-
+    //若机器数小于要创建的分区数，则允许统一位置有多个PartitionGroup
     while (numCreated < targetLen) {  // if we don't have enough partition groups, create duplicates
       var (nxt_replica, nxt_part) = rotIt.next()
       val pgroup = PartitionGroup(nxt_replica)
@@ -290,6 +355,10 @@ private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack:
    * @return partition group (bin to be put in)
    */
   def pickBin(p: Partition): PartitionGroup = {
+    /**
+      * 1、若有根据分区本地行信息，根据松弛因子和本地性将分区尽可能分配到本地节点上
+      * 2、否则，直接返回结果
+      */
     val pref = currPrefLocs(p).map(getLeastGroupHash(_)).sortWith(compare) // least loaded pref locs
     val prefPart = if (pref == Nil) None else pref.head
 
@@ -303,6 +372,7 @@ private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack:
 
     val prefPartActual = prefPart.get
 
+    //为达到本地性要求，添加松弛因子balanceSlack，允许分区均衡性和本地性间上下倾斜
     if (minPowerOfTwo.size + slack <= prefPartActual.size) { // more imbalance than the slack allows
       minPowerOfTwo  // prefer balance over locality
     } else {
@@ -312,11 +382,17 @@ private class PartitionCoalescer(maxPartitions: Int, prev: RDD[_], balanceSlack:
 
   def throwBalls() {
     if (noLocality) {  // no preferredLocations in parent RDD, no randomization needed
+      /**
+        * 1. 重新分区数大于RDD的已有分区数，则直接返回结果
+        */
       if (maxPartitions > groupArr.size) { // just return prev.partitions
         for ((p, i) <- prev.partitions.zipWithIndex) {
           groupArr(i).arr += p
         }
       } else { // no locality available, then simply split partitions based on positions in array
+        /**
+          * 若不考虑分区本地性，且要分区数大于节点数时，将已有分区均匀分给各个节点
+          */
         for (i <- 0 until maxPartitions) {
           val rangeStart = ((i.toLong * prev.partitions.length) / maxPartitions).toInt
           val rangeEnd = (((i.toLong + 1) * prev.partitions.length) / maxPartitions).toInt

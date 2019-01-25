@@ -58,4 +58,5 @@ if [ "$START_TACHYON" == "true" ]; then
 fi
 
 # Launch the slaves
+# 例如：/spark-1.6.3/sbin/slaves.sh cd /spark-1.6.3 ; /spark-1.6.3/sbin/start-slave.sh spark://localhost:7077
 "${SPARK_HOME}/sbin/slaves.sh" cd "${SPARK_HOME}" \; "${SPARK_HOME}/sbin/start-slave.sh" "spark://$SPARK_MASTER_IP:$SPARK_MASTER_PORT"

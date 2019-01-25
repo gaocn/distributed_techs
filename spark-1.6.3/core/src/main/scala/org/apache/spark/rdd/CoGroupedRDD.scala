@@ -84,7 +84,7 @@ class CoGroupedRDD[K: ClassTag](
   // Each ArrayBuffer is represented as a CoGroup, and the resulting Array as a CoGroupCombiner.
   // CoGroupValue is the intermediate state of each value before being merged in compute.
   private type CoGroup = CompactBuffer[Any]
-  private type CoGroupValue = (Any, Int)  // Int is dependency number
+  private type CoGroupValue = (Any, Int)  // Int is dependency number 每个rdd的索引，因为rdds: Seq[RDD[_]]
   private type CoGroupCombiner = Array[CoGroup]
 
   private var serializer: Option[Serializer] = None
@@ -114,7 +114,7 @@ class CoGroupedRDD[K: ClassTag](
       // Each CoGroupPartition will have a dependency per contributing RDD
       array(i) = new CoGroupPartition(i, rdds.zipWithIndex.map { case (rdd, j) =>
         // Assume each RDD contributed a single dependency, and get it
-        dependencies(j) match {
+        dependencies(j) match { //j为每个rdd的索引
           case s: ShuffleDependency[_, _, _] =>
             None
           case _ =>

@@ -41,7 +41,7 @@ import org.apache.spark.annotation.DeveloperApi
  *   rdd.sortByKey()
  * }}}
  */
-class OrderedRDDFunctions[K : Ordering : ClassTag,
+class OrderedRDDFunctions[K : Ordering : ClassTag, //K同时满足：存在Ordering[K]类型及classTag[K]
                           V: ClassTag,
                           P <: Product2[K, V] : ClassTag] @DeveloperApi() (
     self: RDD[P])

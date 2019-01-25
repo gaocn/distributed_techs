@@ -35,6 +35,7 @@ if [ -z "$SPARK_ENV_LOADED" ]; then
   user_conf_dir="${SPARK_CONF_DIR:-"$parent_dir"/conf}"
   # 若存在spark-env.sh存在着加载spark环境配置!
   if [ -f "${user_conf_dir}/spark-env.sh" ]; then
+    # 从设置开始标记所有新的和修改过的用于输出的变量
     # Promote all variable declarations to environment (exported) variables
     set -a
     . "${user_conf_dir}/spark-env.sh"

@@ -1,0 +1,27 @@
+Schedulable[parent,name,stageId,priority,runningTasks,minShare,weight,schedulingMode,schedulableQueue] An interface for schedulable entities
+	+ Pool[stageId=-1]
+	+ TaskSetManager[name=null,scheduler,taskSet,maxTaskFailure,clock]
+TaskSet[tasks,stageId,stageAttemptId,priority,propeprties]
+a set of tasks submitted together to low-level TaskScheculer, usually representing missing partitions of a particular stage.
+参数：spark.driver.maxResultSize=1g
+#TaskSet中所有任务结果总和大小，当超过1g则停止TaskSet的执行并发送给DAG告知TaskSet执行”完成“
+
+1、Schedulable采用树形结构组织被调度实体，其中叶子节点类型为TaskSetManager，树根和分支节点用Pool表示；
+2、调度模式分为两种：SchedulingMode.FIFO、SchedulingMode.FAIR；
+3、调度算法分为两种：FIFOSchedulingAlgorithm、FairSchedulingAlgorithm，其中主要实现comparator(schedulable1,schedulable2)方法，从而可以得到树形结构排序结果，然后进行调度；
+4、FIFOSchedulingAlgorithm算法首先根据优先级priority排序，然后根据stageid排序，优先级越小、stageid越小，越先执行；
+5、FairSchedulingAlgorithm算法策略是防止防止饥饿现象，因此根据minShare与runningTasks的关系分为以下情况：
+	（1）若两个调度实体中有一个满足runningTasks<minShare，为防止饥饿，让对应的调度实体先执行；
+	（2）若两个调度实体中都满足runningTasks<minShare，则比较runningTasks/minShare的关系，那个比值小先执行那个（任务获取COREs少的调度实体）；
+	（3）若两个调度实体中都不满足runningTasks<minShare，则比较runningTasks/weight的关系，那个比值小先执行那个（任务权重小的调度实体）；
+	（4）若以上都不满足，则根据name判断调度的优先级；
+6、调度实体中的两个重要方法：checkSpeculatableTasks、getSortedTaskSetQueue，前者进行慢任务推测，否则根据调度算法获取排序的TaskSet队列便于进行调度；
+7、TaskSetManager负责调度TaskSchedulerImpl中TaskSet中的任务，并负责跟踪这些任务，进行慢任务检测、在任务失败时进行重试（默认重试次数6次）；
+8、TaskSetManager采用延迟调度机制实现TaskSet中任务本地性的最大化。
+9、TaskSetManager.dequeueTask根据本地性拿到一个可以执行的任务，若获得一个慢任务来执行，该方法被TaskSchedulerImpl调用;
+10、TaskSetManager.handleSuccessfulTask(tid,result:DirectTaskResult[_])标记任务执行成功并通知DAGScheduler，该方法被TaskSchedulerImpl调用;
+11、TaskSetManager.handleFailedTask(tid:Long,state:TaskState,reason:TaskReason)标记任务执行失败通知DAGScheduler并若重试次数未超过6次则重新添加到pending tasks中，由TaskSchedulerImpl调用;
+12、TaskSetManager.executorLost(execId,host,reason)当Executor丢失时在该Executor上的任务需要重新加入pending tasks中重新被执行，该方法被TaskSchedulerImpl调用;
+
+
+

@@ -1,0 +1,25 @@
+【慢任务推测（Slow Task Speculation）】
+spark.speculation.quantile=0.75
+spark.speculation.multiplier=1.5
+//由于慢任务的量通常比较少，因此采用集合存放；
+val speculatableTasks = new HashSet[Int]
+
+TaskSetManager.dequeueSpeculativeTask(execId,host,locality):Option[(Int,Locality.Value)]
+从speculatableTasks中返回一个能在给定的Executor上运行的慢任务及其Locality，该慢任务当前不能在host上正在运行着！
+1、过滤掉speculatableTasks中已执行完成的任务，下面并根据本地性级别逐一判断返回第一个满足条件的任务；
+2、检查是否有PROCSS_LOCAL级别的的任务，依次遍历speculatableTasks，若当前任务没有被加入黑名单且没有在host上运行，拿到当前任务的本地性信息，并从本地类型为ExecutorCacheTaskLocation任务中获取executorId集合，若execId在executorId集群中则直接返回Some((index,TaskLocality.PROCESS_LOCAL));
+3、检查是否有NODE_LOCAL级别的的任务，依次遍历speculatableTasks，若当前任务没有被加入黑名单且没有在host上运行，拿到当前任务的本地性信息若其中包含host则直接返回Some((index,TaskLocality.NODE_LOCAL));
+4、检查是否有NO_PREF级别的的任务，依次遍历speculatableTasks，若当前任务没有被加入黑名单且没有在host上运行，拿到当前任务的本地性信息若为空，则直接返回Some((index,TaskLocality.PROCESS_LOCAL))；
+5、检查是否有RACK_LOCAL级别的的任务，依次遍历speculatableTasks，若当前任务没有被加入黑名单且没有在host上运行，拿到当前任务的本地性信息若RACK信息中有host所在的RACK则直接返回Some((index,TaskLocality.RACK_LOCAL))
+6、检查是否有ANY级别的的任务，依次遍历speculatableTasks，若当前任务没有被加入黑名单且没有在host上运行，直接返回Some((index, TaskLocality.ANY))；
+7、若没有满足条件的任务返回None；
+
+TaskSetManager.checkSpeculatableTasks():Boolean
+由TaskScheduler周期性调用，用于判断时候存在慢任务，若存在则返回true，为了避免对TaskSet进行扫描这里维护了runningTask集合。
+1、若TaskSetManager.isZombie或任务个数为1时返回false，此时不会有慢任务；
+2、若已完成的任务数小于spark.speculation.quantile*总任务数时则返回false；
+3、否则将未完成的任务按照已执行时间duration进行排序，拿到中间一个任务的medianDuration值，得到慢任务执行上限threshold=max(spark.speculation.multiplier*medianDuration,100)
+4、循环遍历正在执行任务，若该任务没有完成且正在执行的该任务数为1且执行时间超过threshold且没有在speculatableTasks集合中，则将该慢任务加到speculatableTasks集合中，并设置存在慢任务标记；
+5、返回时候存在任务标记；
+
+慢任务什么时候执行？在TaskSetManager.dequeueTask方法中，若没有其他任务需要执行，则会从speculatableTasks拿出一个慢任务来执行！

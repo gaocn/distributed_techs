@@ -35,13 +35,6 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.util.{Clock, SystemClock, Utils}
 
 /**
- * 延迟调度和数据本地性紧密相关，做调度时所有的努力都是尽量保证数据在当前机器的内存中，这样就不会存在网络IO、磁盘IO。
- * 所以所有的调度都是为了追求这样的一种本地性，在这个基础之上就产生了延迟调度。延迟调度的目的就是为了最大化的本地性而进行的延迟或等待。
- * 延迟调度：在进行任务调度时，假设数据在当前节点的内存中，但是要执行与该数据相关的任务却没有资源，因此只能延迟或等待任务被分配到该节点上。
- * Task要工作要依赖TaskSetManager，TaskSetManager负责TaskSet的本地性调度。
- *
- * 延迟调度：会延迟任务调度时间，但有超时机制。 优化方法：数据进入内存时，多存储几个副本，但是会消耗内存资源！
- *
  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
  * each task, retries tasks if they fail (up to a limited number of times), and
  * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
@@ -50,6 +43,18 @@ import org.apache.spark.util.{Clock, SystemClock, Utils}
  *
  * THREADING: This class is designed to only be called from code with a lock on the
  * TaskScheduler (e.g. its event handlers). It should not be called from other threads.
+ *
+ * 什么是延迟调度？
+ * 在进行任务调度时，假设数据在当前节点的内存中，但是要执行与该数据相关的任务却没有资源，因此只能延迟
+ *   或等待任务被分配到该节点上。
+ *
+ * 为什么要进行延迟调度？
+ * 延迟调度和数据本地性紧密相关，做调度时所有的努力都是尽量保证数据在当前机器的内存中，这样就不会存在
+ *  网络IO、磁盘IO。所以所有的调度都是为了追求这样的一种本地性，在这个基础之上就产生了延迟调度。延迟调
+ *  度的目的就是为了最大化的本地性而进行的延迟或等待。
+ *
+ * 延迟调度：会延迟任务调度时间，但有超时机制。
+ * 延迟调度优化方法：数据进入内存时，多存储几个副本，但是会消耗内存资源！
  *
  * @param sched           the TaskSchedulerImpl associated with the TaskSetManager
  * @param taskSet         the TaskSet to manage scheduling for
@@ -253,6 +258,8 @@ private[spark] class TaskSetManager(
    * Return None if the list is empty.
    * This method also cleans up any tasks in the list that have already
    * been launched, since we want that to happen lazily.
+   *
+   * 从给定的任务列表中找到第一个即没有执行也没有执行完成同时没有添加到黑名单中的任务并返回！
    */
   private def dequeueTaskFromList(execId: String, list: ArrayBuffer[Int]): Option[Int] = {
     var indexOffset = list.size
@@ -369,6 +376,9 @@ private[spark] class TaskSetManager(
   /**
    * Dequeue a pending task for a given node and return its index and locality level.
    * Only search for tasks matching the given locality constraint.
+   *
+   * 依次调用dequeueTaskFromList、dequeueSpeculativeTask获取一个可以在执行executor或host
+   * 上执行且满足本地性要求的任务，若没有则返回对应本地级别的一个慢任务。
    *
    * @return An option containing (task index within the task set, locality, is speculative?)
    */

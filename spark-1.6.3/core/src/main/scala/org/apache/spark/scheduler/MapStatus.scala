@@ -58,6 +58,13 @@ private[spark] object MapStatus {
    * Compress a size in bytes to 8 bits for efficient reporting of map output sizes.
    * We do this by encoding the log base 1.1 of the size as an integer, which can support
    * sizes up to 35 GB with at most 10% error.
+   *
+   * 最多表示的范围：1.1^255 = 35,903,328,718
+   *
+   * 基于log的基数为b，对于任意整数N，设a=logN，则(b^a, b^(a+1)]之间整数都会解释为a+1，存在误差。
+   * 则可以得出误差率为：e = (b^(a+1) - b^a)/b^(a+1) = 1 - 1/b，其中b>=1，由于函数图可以知道b值越小误差率越小。
+   * 因此这里去b = 1.1尽量将误差控制在较小范围，误差率为：0.91
+   *
    */
   def compressSize(size: Long): Byte = {
     if (size == 0) {

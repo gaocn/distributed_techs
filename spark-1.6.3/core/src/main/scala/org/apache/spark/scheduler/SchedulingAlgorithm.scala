@@ -26,6 +26,9 @@ private[spark] trait SchedulingAlgorithm {
   def comparator(s1: Schedulable, s2: Schedulable): Boolean
 }
 
+/**
+  * 首先根据优先级priority排序，然后根据stageid排序，优先级越小、stageid越小，越先执行；
+  */
 private[spark] class FIFOSchedulingAlgorithm extends SchedulingAlgorithm {
   override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {
     val priority1 = s1.priority
@@ -47,6 +50,12 @@ private[spark] class FIFOSchedulingAlgorithm extends SchedulingAlgorithm {
 /**
   * 公平调度是一个树结构，因此其优先级比较也复杂点
   * 运行Task越多则说明越重要，优先级也就越高
+  *
+  * FairSchedulingAlgorithm算法策略是防止防止饥饿现象，因此根据minShare与runningTasks的关系分为以下情况：
+  * （1）若两个调度实体中有一个满足runningTasks < minShare，为防止饥饿，让对应的调度实体先执行；
+  * （2）若两个调度实体中都满足runningTasks < minShare，则比较runningTasks/minShare的关系，那个比值小先执行那个（任务获取COREs少的调度实体）；
+  * （3）若两个调度实体中都不满足runningTasks < minShare，则比较runningTasks/weight的关系，那个比值小先执行那个（任务权重小的调度实体）；
+  * （4）若以上都不满足，则根据name判断调度的优先级；
   */
 private[spark] class FairSchedulingAlgorithm extends SchedulingAlgorithm {
   override def comparator(s1: Schedulable, s2: Schedulable): Boolean = {

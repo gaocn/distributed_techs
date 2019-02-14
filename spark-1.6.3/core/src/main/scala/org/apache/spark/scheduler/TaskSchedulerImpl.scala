@@ -37,8 +37,8 @@ import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.storage.BlockManagerId
 
 /**
- * TaskSchedulerImpl在不同集群间适配，需要适配器<SchedulerBackend>，可以将<TaskSchedulerImpl>想象为手机，不同集群可想象为
- * 不同的资源来源--不同的能量来源（电源），同一款手机<TaskSchedulerImpl>可以有不同的充电设备<SchedulerBackend>来适配。
+ * TaskSchedulerImpl在不同集群间适配，需要适配器<SchedulerBackend>，可以将<TaskScheduler>想象为手机，不同集群可想象为
+ * 不同的资源来源--不同的能量来源（电源），同一款手机<TaskScheduler>可以有不同的充电设备<SchedulerBackend>来适配。
  * 本地、集群、yarn、mesos可以看做是电源。 手机遵循充电接口标准可以根据不同符合标准的充电器在不同的电源上获取电（使用资源进行工作）
  *
  * --TaskScheduler 为接口
@@ -337,7 +337,7 @@ private[spark] class TaskSchedulerImpl(
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
     /**
-      * 按照一定调度算法决定具体每个Stage中TaskSet调用的优先顺序。
+      * 按照一定调度算法决定具体每个Stage中TaskSetManager调用的优先顺序。
       * Pool为树形结构，FIFO调度模式下看可以看做TaskSetManger的集合，FAIR模式下叶子节点为TaskSetManager，分支节点为Pool。
       * 排序得到的任务集合根据调度模式不同，默认FIFO模式会根据优先级、stageid进行排序返回TaskSetManager的集合。
       */

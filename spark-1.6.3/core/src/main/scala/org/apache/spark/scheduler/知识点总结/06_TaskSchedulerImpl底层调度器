@@ -1,0 +1,72 @@
+TaskScheduler在不同集群间适配，需要适配器<SchedulerBackend>，可以将<TaskSchedulerImpl>想象为手机，不同集群可想象为不同的资源来源--不同的能量来源（电源），同一款手机<TaskScheduler>可以有不同的充电设备<SchedulerBackend>来适配。本地、集群、yarn、mesos可以看做是电源。 手机遵循充电接口标准可以根据不同符合标准的充电器在不同的电源上获取电（使用资源进行工作）
+1、当DAGScheduler发送过来一个Stage需要执行的TaskSets后，TaskScheduler负责将将任务发送到Spark集群中的Worker节点上去执行，同时慢任务检测及失败任务重试（具体由Pool实例实现）。
+2、针对不同类型的集群TaskScheduler.submitTasks(taskSet)通过SchedulerBackend.reviveOffers()实例完成任务调度。
+3、TaskSchedulerImpl.initialize方法根据调度模式初始化Pool任务调度池，默认采用FIFO，调度池为TaskSetManager构成队列，若为FAIR则会从配置文件fairscheduler.xml中读取并创建Pool，默认配置文件如下：
+<allocations>
+  <pool name="production">
+    <schedulingMode>FAIR</schedulingMode>
+    <weight>1</weight>
+    <minShare>2</minShare>
+  </pool>
+  <pool name="test">
+    <schedulingMode>FIFO</schedulingMode>
+    <weight>2</weight>
+    <minShare>3</minShare>
+  </pool>
+</allocations>
+
+4、TaskSchedulerImpl.start方法的作用是调用TaskBackend.start，同时启动周期性线程池执行慢任务检测，实际会调用rootPool.checkSpeculatableTasks()方法执行慢任务检测；
+执行具体任务时的相关配置：
+spark.task.maxFailures = 4 允许任务最大重试次数
+spark.task.cpus = 1 默认每个任务需要的CPU核数为1
+spark.speculation.interval = 100ms TaskSchedulerImpl内部采用单线程池周期性检测慢任务，
+spark.starvation.timeout = 15s 当初始化TaskSet时间操作15秒，则提示用户可能出现饥饿
+spark.scheduler.mode = FIFO 默认调度模式为FIFO
+
+
+【资源调度】
+TaskScheduler.submitTasks(taskSet)
+1、为taskSet创建TaskSetManager并将其添加到rootPool中，调用SchedulerBackend.reviveOffers()进行资源调度；
+2、同时启动周期线程池任务，每隔15s检测一次TaskSetManager是否被分配资源并进行调度，若没有则打印提示信息
+Initial job has not accepted any resources; check your cluster UI to ensure that workers are registered and have sufficient resources
+
+SchedulerBackend.reviveOffers()-->driverEndpoint.send(ReviveOffers)-->makeOffers()-->launchTasks(scheduler.resourceOffers(workOffers))
+
+3、基于Spark集群进行资源调度的实现类CoarseGrainedSchedulerBackend中的reviveOffers方法会调用driverEndpoint.send(ReviveOffers)
+4、Driver处理ReviveOffers事件，计算可用的Executors资源workOffers，然后调用TaskSchedulerImpl.resourceOffers(workOffers)根据任务优先级得到可以执行的TaskDescription集合，最后CoarseGrainedSchedulerBackend.launchTasks方法将具体任务根据本地性发送到具体的ExecutorBackend上去执行。
+
+
+[TaskSchedulerImpl.resourceOffers(workOffers)]
+有Driver调用，根据Driver提供的可用资源workOffers获取可以优先在每个Executor上可运行的任务集合Seq[Seq[TaskDesc]]。
+1、根据可用资源信息，统计executorIdToTaskCount（每个Executor上运行的任务树）、executorIdToHost（Executor与host的对应关系）、executorsByHost（每个host上的Executor集合）、hostsByRack（每个Rack上的host集合），并且确定是否有新增的Executor，若有则newExecAvail=true；
+2、对workOffers进行shuffle重排以实现分配计算资源的负载均衡；
+3、根据每个ExecutorBackend的cores个数声明类型为TaskDescription的ArrayBuffer数组，数组中可以有多少个TaskDescription ExecutorBackend就可以（可并行）运行多少个任务；
+4、根据调度模式确定rootPool中所有的排好序的TaskSetManager集合，默认FIFO模式会根据优先级、stageid进行排序；
+5、若newExecAvail=true，则针对排好序的TaskSetManager集合中的每一个TaskSetManager调用TaskSetManager.executorAdded()方法以便让TaskSetManager重新计算可用的任务本地性级别；
+6、 /**
+      * 数据本地性优先级由高到低为：PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
+      * NO_PREF与ANY的区别？NO_PREF是指机器本地性，一个机器可能会有多个NODE。
+      *
+      * PROCESS_LOCAL: RDD的Partition和Task在同一个Executor内部，计算速度最快；
+      * NODE_LOCAL:    RDD的Partition和Task不在同一个Executor内部，不在同一个进程但是在同一个Worker节点上；
+      * NO_PREF:       没有所谓的本地化级别，指机器本地性；
+      * RACK_LOCAL:    RDD的Partition和Task在同一个机架上；
+      * ANY:           任意的本地化级别
+      */
+    var launchedTask = false
+    //通过下述代码追求最高优先级本地性，遍历每一个taskSet，每一个本地化级别
+    for (taskSet <- sortedTaskSets; maxLocality <- taskSet.myLocalityLevels) {
+      do {
+        /**
+          * 对TaskSet任务进行数据本地性的确定
+          * 根据当前资源情况，更新每个Executor上可以运行的Task集合并返回能否执行任务的标志位（若tasks不为空则可以launchTask=true）；
+          * 对于每一个TaskSet找到一个可以运行的本地化级别让当前TaskSet能够在Executors上运行！
+          */
+        launchedTask = resourceOfferSingleTaskSet(taskSet, maxLocality, shuffledOffers, availableCpus, tasks)
+      } while (launchedTask)
+    }
+    if (tasks.size > 0) {
+      hasLaunchedTask = true
+    }
+    return tasks
+7、resourceOfferSingleTaskSet会依次遍历shuffledOffers中的每个资源，调用TaskSetManager.resourceOffer(execId, host, maxLocality)得到在当前maxLocality本地级别下可运行的任务集合并添加到tasks中，并更新availableCpus(i) -= CPUS_PER_TASK。

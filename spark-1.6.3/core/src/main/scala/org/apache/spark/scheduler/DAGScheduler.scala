@@ -717,9 +717,8 @@ class DAGScheduler(
     // This makes it easier to avoid race conditions between the user code and the map output
     // tracker that might result if we told the user the stage had finished, but then they queries
     // the map output tracker and some node failures had caused the output statistics to be lost.
-    val waiter = new JobWaiter[](this, jobId, 1, (i: Int, r: MapOutputStatistics) => callback(r))
-    eventProcessLoop.post(MapStageSubmitted(
-      jobId, dependency, callSite, waiter, SerializationUtils.clone(properties)))
+    val waiter = new JobWaiter[MapOutputStatistics](this, jobId, 1, (i: Int, r: MapOutputStatistics) => callback(r))
+    eventProcessLoop.post(MapStageSubmitted(jobId, dependency, callSite, waiter, SerializationUtils.clone(properties)))
     waiter
   }
 
@@ -985,7 +984,6 @@ class DAGScheduler(
 
   /**
     * Called when stage's parents are available and we can now do its task.
-    *
     *stage的构建：从最后一个Action往前推。事实上最后一个Action计算动作不算是Stage内部的工作！！
     *
     **/
@@ -1021,7 +1019,7 @@ class DAGScheduler(
           stage = s.id, maxPartitionId = s.rdd.partitions.length - 1)
     }
     /**
-      * 数据本地性在底层任务运行前就已完成，实际是调用RDD.getPreferredLocations时完成的
+      * 数据本地性在底层任务运行前就已完成，实际是调用RDD.getPreferredLocations完成的
     */
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
       stage match {
@@ -1591,8 +1589,11 @@ class DAGScheduler(
    * DAGScheduler state accessed by it may require additional synchronization.
    *
    * (1)、从DAGScheduler中cacheLocs的内存数据结构中是否有该当前Partition的数据本地行信息，若有这直接返回；
-   * (2)、否则会调用RDD.getPreferedLocations（实现RDD必须要实现的方法，例如要让Spark运行在HBaae上或一种不支持的数据库，此时开发者自定义RDD，为了保证Task计算的数据本地性，最为关键的方式就是实现RDD的getPreferedLocations）获取Partition的的数据本地行信息，若有则返回。
-   * (3)、若上述都不存在，则从当前Partition的Parent Partition中找到第一个为Narrow Dependency的partition所在的数据本地行信息返回。
+   * (2)、否则会调用RDD.getPreferedLocations（实现RDD必须要实现的方法，例如要让Spark运行在HBaae上或一种
+   *     不支持的数据库，此时开发者自定义RDD，为了保证Task计算的数据本地性，最为关键的方式就是实现RDD的
+   *     getPreferedLocations）获取Partition的的数据本地行信息，若有则返回。
+   * (3)、若上述都不存在，则从当前Partition的Parent Partitions中对所有Narrow Dependency的partition调
+   *     用getPreferredLocsInternal方法，返回第一个不为空的分区数据所在的本地性信息。
    *
    * DAGScheduler计算数据本地性时，巧妙借助RDD自身的getPreferredLocations中的数据，最大化的优化效率，
    * 因为getPreferredLocations中表明了每个Partition的数据本地性，虽然当前Partition可能被persist

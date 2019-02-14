@@ -1,0 +1,125 @@
+1、DAGScheduler是面向Stage的高层调度器，它会根据宽依赖将每个作业划分为若干个Stages并得到Stages的有向无环图，根据该有向无环图找到作业调度的最佳路径，然后会将路径上的每个Stage（每个Stage以TaskSet的形式，TaskSet为计算逻辑相同但计算数据不同的可独立执行的单元的集合）按照顺序逐个提交给TaskSchedulerImpl去执行，最后DAGScheduler负责记录每个Stages计算结果的输出位置。
+2、[任务本定性]DAGScheduler会根据cacheLocs[rddIds, IndexedSeq[Seq[TaskLocation]]]（记录每个RDD的每个分区的位置信息）确定任务的本地性然后交给TaskSchedulerImpl执行。
+3、[失败恢复]同一个Stage可会被执行多次(attempts)，若TaskSchedulerImpl报告某个任务依赖的Stage的MapOutputFiles丢失，则DAGScheduler会重新提交该Stage。在DAGScheduler第一次接收到MapOutputFiles丢失时会等到200毫秒以便确认是否有其他类似报告，然后对重新提交所有丢失数据的Stages对应的TaskSets重新计算missing tasks。
+4、[结果重用]DAGScheduler通过CacheTracking记录每个RDD被缓存的计算结果同时记录每个Stage输出的结果信息以免重新计算；不同作业若使用了相同的RDD，则不同作业中使用相同RDD的Stages的结果共享。
+5、ActiveJob是提交给DAGScheduler的工作单元，由DAGScheduler负责维护，同时在作业计算完成后该作业依赖的所有数据结构都应该被释放以避免内存泄露！
+6、SparkContext通过DAGScheduler.runJob提交作业给Spark集群处理。
+
+DAGSchedulerEvent
+	+ JobSubmitted[jobId,finalRDD,func,partitions,callSite,listener,properties] a result-yielding job was submitted on a target RDD
+	+ MapStageSubmitted[jobId,shuffleDependency,callSite,listener,properties] a map stage as submitted to run as a separate job
+	+ BeginEvent[task, taskInfo] Called by the TaskSetManager to report task's starting.
+	+ GettingResultEvent[taskInfo] Called by the TaskSetManager to report that a task has completed and results are being fetched remotely.
+	+ CompletionEvent[task,reason,result,taskInfo,taskMetrics,accumUpdates] Called by the TaskSetManager to report task completions or failures.若因为MapFileLost失败则进行Stage重试，若成功：Task是ResultTask则记录结果同时清理与该作业相关的数据结果；Task为ShuffleMapTask则将ShuffleMapStage输出结果记录到外部存储，若ShuffleMapStage中有部分任务执行失败则重新提交该Stage，否则将该Stage标记为执行完成。
+	+ ExecutorAdded[execId,host] Called by TaskScheduler implementation when a host is added.
+	+ ExecutorLost[execId] Called by TaskScheduler implementation when an executor fails.
+	+ TaskSetFailed[taskSet,reason,exception] Called by the TaskSetManager to cancel an entire TaskSet due to either repeated failures or cancellation of the job itself.
+	+ ResubmitFailedStages 将所有失败Stages集合中的Stages重新提交
+	+ StageCancelled[stageId] Cancel all jobs associated with a running or scheduled stage
+	+ JobCalcelled[jobId] Cancel a job that is running or waiting in the queue
+	+ JobGroupCancelled[groupId] Cancel all jobs in the given job group ID.
+	+ AllJobsCancelled  Cancel all jobs that are running or waiting in the queue.
+
+7、DAGScheduler内部通过一个逻辑线程（保证线程安全）处理事件队列中的事件，任何线程(包括DAGScheduler本身)都可以向DAGScheduler提交事件；
+class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler) extends EventLoop[DAGSchedulerEvent]
+|--------------------------------
+|  DAGScheduler                 |
+|-------------------------------|
+| |-----------------------------|
+| |DAGSchedulerEventProcessLoop |
+| |  |--------------------------|
+| |  |        onReceive         |
+| |  |--------------------------|
+| |-----------------------------|
+
+abstract class EventLoop[E] {
+  private val eventQueue:BlockingQueue[E] = new LinkedBlockingQueue[E]()
+  private val stopped = new AtomicBoolean(false)
+  private val eventThread = new Thread() {
+    setDaemon(true)
+    override def run():Unit = {
+      try{
+        while(!stopped.get) {
+          val event = eventQueue.take()
+          try {
+            onReceive(event)
+          } catch {
+            case e: Exception => onError(e)
+          }
+        }
+      } catch {
+         case ie: InterruptedException =>
+         case _ => log("Unexpected error")
+      }
+
+    }
+  }
+
+  def start(): Unit = {
+    if(stopped.get)  {
+      throw new IllegalStateException(name + " has already been stopped")
+    }
+    onStart()
+    eventThread.start()
+  }
+
+  def stop(): Unit = {
+    if(stopped.compareAndSet(false, true)) {
+      eventThread.interrupt()
+      var onStopCalled = false
+      try {
+        eventThread.join()
+        onStopCalled = true
+        onStop()
+      } catch {
+        case ie: InterruptedException => {
+          Thread.currentThread().interrupt()
+          if(!onStopCalled){onStop()}
+      }
+
+    } else {}
+  }
+
+  def post(event: E): Unit {
+    eventQueue.put(event)
+  }
+  def onStart(): Unit
+  def onStop(): Unit
+  def onReceive(event: E): Unit
+  def onError(e: Throwable): Unit
+}
+
+【DAGScheduler中作业的提交和处理】
+SparkContext.runJob-->DAGScheduler.runJob-->DAGScheduler.submitJob-->JobSubmitted-->DAGScheduler.handleJobSubmitted
+1、finalStage:ResultStage = newResultStage(finalRDD, func, partitions, jobId, callSite)为作业创建ResultStage并划分所有的ShuffleMapStage；
+	(1) (parentStages, id)=getParentStagesAndId(rdd, jobId)-->getParentStages(rdd, firstJobId)采用深度优先遍历以宽依赖为边界创建新的ShuffleMapStage
+	(2) 返回new ResultStage(id, rdd, func, partitions, parentStages, jobId, callSite)
+2、submitStage(finalStage)开始进行Tasks的运行调度；
+	(1) 调用missing=getMissingParentStages获取该finalStage所有的依赖的Stages，并按照stageId从小到大排序；
+	(2) 若missing为空，则说明该Stage没有依赖其他Stages或依赖的Stages已经完成，则调用submitMissingTasks(finalStage, jobId.get)提交当前Stage；
+	(3) 若missing不为空，遍历missing中的每一个Stage，递归调用submitStage(stage)确保finalStage的所有依赖的Stages被执行完成；
+3、submitWaitingStages()检查是否有waiting或fialed的Stages，并调用submitStage(stage)提交，该方法会在EventLoop每次迭代时调用；
+
+[算子合并与函数的展开]
+getMissingParentStages(stage: Stage): List[Stage]-->getShuffleMapStage-->newOrUsedShuffleStage-->newShuffleMapStage-->getParentStagesAndId-->getParentStages-->getShuffleMapStage
+采用深度优先遍历从后往前推导依赖关系，计算当前RDD就必须计算其父RDD，表面上看是RDD的依赖关系，事实上是函数展开的过程。而得到父RDD后进行计算时又会从前往后计算，通过依赖关系隐性的完成了算子合并，所以这就完成了算子的合并与计算，展开的过程（划分不同Stages）其实也是合并（同一个Stage内部）的过程，同一个Stage内部的操作就可以实现Pipeline计算，即多个计算步骤作用于同一份数据且不会产生中间结果直到计算结束，Spark有算子的pipeline而Hadoop没有这是Spark快的基本原因。
+
+而Partition到底是什么粒度，这个是可以自定义的，可以将Partition作为一条记录，也可以作为多条记录的集合。所以Spark计算可以是细粒度计算，也可以是粗粒度计算，默认Spark是粗粒度计算，Partition内部是以记录集合为单位计算的（获取数据是以Partition为单位，而操作func是一条一条操作的）。
+
+[将Stage转化为TaskSet并调用TaskSchedulerImpl进行底层任务调度]
+submitMissingTasks(finalStage, jobId.get)
+1、调用stage.findMissingPartitions方法获取需要进行计算的partitionIds，对于ShuffleMapStage实例内部会记录每个分区执行结果MapStatus可以根据是否有值进行判断，而对于ResultStage若执行完成会在ActiveJob中保存每一个分区id对应的结果是否计算完成的布尔数组可以根据true或false进行判断；
+2、val taskIdToLocations: Map[Int, Seq[TaskLocation]]计算任务本地性，其中taskId为partitionId，任务本地性计算具体参见下面解释；
+3、若stage为ShuffleMapStage则将(rdd, shuffleDep)序列化后进行broadcast(taskBinary)，若stage为ResultStage则将(rdd, func)序列化后进行(taskBinary)以便Executor上的Tasks共享；
+4、根据stage类型创建tasks:Seq[Task[_]]任务集合，若stage为ShuffleMapStage则将要计算的每个分区分别创建对应的ShuffleMapTask任务，而若stage为ResultStage则将要计算的每个分区分别创建对应的ResultTask任务
+	+ new ShuffleMapTask(stage.id, stage.latestInfo.attemptId,taskBinary, part, locs, stage.internalAccumulators)
+	+ new ResultTask(stage.id, stage.latestInfo.attemptId,taskBinary, part, locs, id, stage.internalAccumulators)
+5、调用TaskSchedulerImpl进行底层任务调度
+	+ taskScheduler.submitTasks(new TaskSet(tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
+
+【DAGScheduler任务本地性】
+DAGScheduler计算数据本地性时，巧妙借助RDD自身的getPreferredLocations中的数据，最大化的优化效率，因为getPreferredLocations中表明了每个Partition的数据本地性，虽然当前Partition可能被persist或checkpoint，但是persist或checkpoint默认情况下肯定是和getPreferredLocations中的Partition的数据本地性是一致的，所以这就极大的简化Task数据本地性算法的实现和效率的优化。
+getPreferredLocs(rdd: RDD[_], partition: Int): Seq[TaskLocation]-->getPreferredLocsInternal(rdd, partition, new HashSet): Seq[TaskLocation]
+(1)、从DAGScheduler中cacheLocs[rddIds, IndexedSeq[Seq[TaskLocation]]]的内存数据结构中查找是否有该当前Partition的数据本地行信息，若有这直接返回；
+(2)、否则会调用RDD.getPreferedLocations（实现RDD必须要实现的方法，例如要让Spark运行在HBaae上或一种不支持的数据库，此时开发者自定义RDD，为了保证Task计算的数据本地性，最为关键的方式就是实现RDD的getPreferedLocations）获取Partition的的数据本地行信息，若有则返回。
+(3)、若上述都不存在，则从当前Partition的Parent Partitions中对所有Narrow Dependency的partition调用getPreferredLocsInternal方法，返回第一个不为空的分区数据所在的本地性信息。

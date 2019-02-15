@@ -1,27 +1,62 @@
-Schedulable[parent,name,stageId,priority,runningTasks,minShare,weight,schedulingMode,schedulableQueue] An interface for schedulable entities
-	+ Pool[stageId=-1]
-	+ TaskSetManager[name=null,scheduler,taskSet,maxTaskFailure,clock]
-TaskSet[tasks,stageId,stageAttemptId,priority,propeprties]
-a set of tasks submitted together to low-level TaskScheculer, usually representing missing partitions of a particular stage.
-参数：spark.driver.maxResultSize=1g
-TaskSet中所有任务结果总和大小，当超过1g则停止TaskSet的执行并发送给DAG告知TaskSet执行”完成“
+// Figure out which locality levels we have in our TaskSet, so we can do delay scheduling
+var myLocalityLevels = computeValidLocalityLevels()
+// Time to wait at each level
+var localityWaits = myLocalityLevels.map(getLocalityWait)
+[延迟调度配置]
+spark.locality.wait = 3s 默认延迟调度等待时长为3s
+spark.locality.wait.process PROCESS_LOCAL级别延迟调度，默认未配置
+spark.locality.wait.node NODE_LOCAL级别延迟调度，默认未配置
+spark.locality.wait.rack RACK_LOCAL级别延迟调度，默认未配置
 
-1、Schedulable采用树形结构组织被调度实体，其中叶子节点类型为TaskSetManager，树根和分支节点用Pool表示；
-2、调度模式分为两种：SchedulingMode.FIFO、SchedulingMode.FAIR；
-3、调度算法分为两种：FIFOSchedulingAlgorithm、FairSchedulingAlgorithm，其中主要实现comparator(schedulable1,schedulable2)方法，从而可以得到树形结构排序结果，然后进行调度；
-4、FIFOSchedulingAlgorithm算法首先根据优先级priority排序，然后根据stageid排序，优先级越小、stageid越小，越先执行；
-5、FairSchedulingAlgorithm算法策略是防止防止饥饿现象，因此根据minShare与runningTasks的关系分为以下情况：
-	（1）若两个调度实体中有一个满足runningTasks<minShare，为防止饥饿，让对应的调度实体先执行；
-	（2）若两个调度实体中都满足runningTasks<minShare，则比较runningTasks/minShare的关系，那个比值小先执行那个（任务获取COREs少的调度实体）；
-	（3）若两个调度实体中都不满足runningTasks<minShare，则比较runningTasks/weight的关系，那个比值小先执行那个（任务权重小的调度实体）；
-	（4）若以上都不满足，则根据name判断调度的优先级；
-6、调度实体中的两个重要方法：checkSpeculatableTasks、getSortedTaskSetQueue，前者进行慢任务推测，否则根据调度算法获取排序的TaskSet队列便于进行调度；
-7、TaskSetManager负责调度TaskSchedulerImpl中TaskSet中的任务，并负责跟踪这些任务，进行慢任务检测、在任务失败时进行重试（默认重试次数6次）；
-8、TaskSetManager采用延迟调度机制实现TaskSet中任务本地性的最大化。
-9、TaskSetManager.dequeueTask根据本地性拿到一个可以执行的任务，若获得一个慢任务来执行，该方法被TaskSchedulerImpl调用;
-10、TaskSetManager.handleSuccessfulTask(tid,result:DirectTaskResult[_])标记任务执行成功并通知DAGScheduler，该方法被TaskSchedulerImpl调用;
-11、TaskSetManager.handleFailedTask(tid:Long,state:TaskState,reason:TaskReason)标记任务执行失败通知DAGScheduler并若重试次数未超过6次则重新添加到pending tasks中，由TaskSchedulerImpl调用;
-12、TaskSetManager.executorLost(execId,host,reason)当Executor丢失时在该Executor上的任务需要重新加入pending tasks中重新被执行，该方法被TaskSchedulerImpl调用;
+getLocalityWait(level: TaskLocality.TaskLocality): Long
+根据本地性级别获取对应的延迟调度配置，若本地级别process、node、rack没有配置则返回默认延迟等待时间3s，其他本地级别返回延迟等待时间0。
+
+computeValidLocalityLevels(): Array[TaskLocality.TaskLocality]
+计算当前TaskSet所有任务中支持的本地性级别，前提是所有任务已经通过addPendingTask(index)分别添加到pendingTasksForExecutor、pendingTasksForHost、pendingTasksForRack、pendingTasksWithNoPrefs集合中，其中某个任务可能存在其中的一个或多个集合中且由于preferredLocations为列表所以在同一个集合中的同一个任务可能会有多个当位置信息不同，例如task1.preferredLocations=[(1,"192.168.1.1"),(2,"10.25.4.1")]不为空且对应数据在缓存中则该任务会被添加到pendingTasksForExecutor、pendingTasksForHost、pendingTasksForRack三个集合中且在其中所有集合中如pendingTasksForExecutor中都会会添加多个任务如(1,task1)、(2,task1)，若task1.preferredLocations=Nil则任务会被添加到pendingTasksWithNoPrefs集合中。
+1、levels = new ArrayBuffer[TaskLocality.TaskLocality]
+2、若pendingTasksForExecutor不为空且getLocalityWait(PROCESS_LOCAL)不为0且其中的execIdIsAlive则levels += PROCESS_LOCAL
+3、若pendingTasksForHost不为空且getLocalityWait(NODE_LOCAL)不为0且其中的exectorOnHostIsAlive则levels += NODE_LOCAL
+4、若pendingTasksWithNoPrefs不为则levels += NO_PREF
+5、若pendingTasksForRack不为空且getLocalityWait(RACK_LOCAL)不为0且其中的HostOnRackIsAlive则levels += RACK_LOCAL
+6、levels += ANY并返回levels数组
 
 
+// Delay scheduling variables: we keep track of our current locality level and the time we
+// last launched a task at that level, and move up a level when localityWaits[curLevel] expires.
+// We then move down if we manage to launch a "more local" task.
+var currentLocalityIndex = 0    // Index of our current locality level in validLocalityLevels
+var lastLaunchTime = clock.getTimeMillis()  // Time we last launched a task at this level
 
+getAllowedLocalityLevel(curTime: Long): TaskLocality.TaskLocality
+根据当前等待时间，基于延迟调度机制获取能够执行任务的本地性级别
+1、从currentLocalityIndex遍历所有的myLocalityLevels，判断对应的pendingTasks集合中是否有尚未执行完成的任务，若有则返回true
+	(1)moreTasks = {
+	  case 1)若是PROCESS_LOCAL，则返回moreTasksToRunIn(pendingTasksForExecutor)
+	  case 2)若是NODE_LOCAL，则返回moreTasksToRunIn(pendingTasksForHost)
+	  case 3)若是NO_PREF，则返回pendingTasksWithNoPrefs.nonEmpty
+	  case 4)若是RACK_LOCAL，则返回moreTasksToRunIn(pendingTasksForRack)
+	}
+moreTasksToRunIn(pendingTasks: HashMap[String, ArrayBuffer[Int]]): Boolean
+遍历pendingTasks中的每个TaskSet，通过tasksNeedToBeScheduledFrom方法判断是否仍有未完成的任务，若有返回true，同时清理pendingTasks中已完成的TaskSet
+
+tasksNeedToBeScheduledFrom(pendingTaskIds: ArrayBuffer[Int]): Boolean
+根据TaskSetManager中的状态详细判断某一个TaskSet中的任务是否还有未完成的，若有则返回true，同时清理pendingTaskIds中已完成的Task。
+	(2)若moreTasks=false，则当前本地级别的集合中没有要执行的任务，lastLaunchTime = curTime；currentLocalityIndex += 1，跳到1继续判断下一个本地级别。
+	(3)若moreTask=true且curTime - lastLaunchTime >= localityWaits(currentLocalityIndex)，即当前本地级别仍有任务等待执行且距离上一次进行任务调度的时间已经超过延迟调度的最大时间，因此超时后本地性自动降级，lastLaunchTime += localityWaits(currentLocalityIndex);currentLocalityIndex += 1，跳到1继续判断下一个本地级别是否可以被执行，其中重设lastLaunchTime以确保下一个级别检查时不会立即超时！
+	(4)若moreTask=true但curTime - lastLaunchTime < localityWaits(currentLocalityIndex)，则直接返回当前本地级别，表示任务可以在当前本地性级别调度。注意：这里是指返回可以调度的级别，具体调度任务时，即在resourceOffer方法中调用dequeueTask(execId, host, allowedLocality)时会更新lastLaunchTime的值。
+2、若currentLocalityIndex已经指向了myLocalityLevels中的最后一个本地级别，则直接返回myLocalityLevels(currentLocalityIndex)该本地级别。
+
+
+TaskSetManager.resourceOffer(execId: String,host: String,maxLocality: TaskLocality.TaskLocality): Option[TaskDescription]
+被TaskSchedulerImpl.resourceOffer(execId: String,host: String,maxLocality: TaskLocality.TaskLocality): Option[TaskDescription]调用返回一个满足指定本地性级别的任务
+1、计算允许的任务本地性级别allowedLocality = min{maxLocality, getAllowedLocalityLevel(curTime)}；
+2、dequeueTask(execId, host, allowedLocality)得到一个指定本地性级别的任务，返回结果为(task index within the task set, locality, is speculative?)元组
+	(1)若pendingTasksForExecutor中有要执行的任务，则返回(index, TaskLocality.PROCESS_LOCAL, false)，否则下一步；
+	(2)若NODE_LOCAL<=allowedLocality，则从pendingTasksForHost获取一个要执行的任务，则返回(index, TaskLocality.NODE_LOCAL, false)，否则下一步；
+	(3)若NO_PREF<=allowedLocality，则从pendingTasksWithNoPrefs获取一个要执行的任务，则返回(index, TaskLocality.PROCESS_LOCAL, false)，否则下一步；
+	(4)若RACK_LOCAL<=allowedLocality，则从pendingTasksForRack获取一个要执行的任务，则返回(index, TaskLocality.RACK_LOCAL, false)，否则下一步；
+	(5)若ANY<=allowedLocality，则从allPendingTasks获取一个要执行的任务，则返回(index, TaskLocality.ANY, false)，否则下一步；
+	(6)调用dequeueSpeculativeTask(execId, host, maxLocality)方法从慢任务集合中拿到一个满足本地性级别要求的慢任务，并返回(index, allowedLocality, true)
+3、若得到了一个要调度的任务，且maxLocality != TaskLocality.NO_PREF则将currentLocalityIndex = getLocalityIndex(taskLocality);lastLaunchTime = curTime，以便在该本地性级别上进行下一次的调度；
+4、Task.serializeWithDependencies(task, sched.sc.addedFiles, sched.sc.addedJars, ser)将任务序列化为字节数组，若序列化后的任务大小大于100KB则打印警告信息；
+5、sched.dagScheduler.taskStarted(task, info)告知DAGScheduler任务准备启动，同时返回该任务的TaskDescription(taskId,attemptNum, execId,taskName, index, serializedTask)以便SchedulerBackend将任务发送到对应的Executor上去执行。

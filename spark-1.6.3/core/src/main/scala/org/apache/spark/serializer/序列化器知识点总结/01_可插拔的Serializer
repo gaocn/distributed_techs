@@ -1,0 +1,75 @@
+【Pluggable Serializer】
+由于有些序列化库不是线程安全的，因此Serializer类用于创建SerializerInstance（多个）实例用于序列化工作，并确保每个实例对象每次只能在一个线程内部使用。
+abstract class Serializer {
+  //在反序列化时要用到的类加载器
+  @volatile protected var defaultClassLoader: Option[ClassLoader] = None
+  def setDefaultClassLoader(classLoader: ClassLoader): Serializer = {
+    defaultClassLoader = Some(classLoader)
+    this
+  }
+  // 创建序列化器实例
+  def newInstance():SerializerInstance
+  // SPARK-7311
+  private[spark] def supportsRelocationOfSerializedObjects: Boolean = false
+}
+Serializer子类
+	+ JavaSerializer
+	+ KryoSerializer
+	+ GenericAvroSerializer
+
+序列化器实例用于完成数据序列化和反序列化，该实例每次只能在一个线程内部使用；可以创建多个serialization / deserialization streams实例但要求这些stream实例只能在同一个线程内部被使用。
+abstract class SerializerInstance {
+  def serialize[T: ClassTag](t: T): ByteBuffer
+  def deserialize[T: ClassTag](bytes: ByteBuffer): T
+  def deserialize[T: ClassTag](bytes: ByteBuffer, loader: ClassLoader): T
+  def serializeStream(s: OutputStream): SerializationStream
+  def deserializeStream(s: InputStream): DeserializationStream
+}
+SerializerInstance子类
+	+ JavaSerializerInstance
+	+ KryoSerializerInstance
+	+ DummySerializerInstance
+
+
+
+有时候我们想把某个OutputStream序列化为一个流而不是直接数组，而把要InputStream反序列化为另一种流而不是某个对象。此时我们可以同自定义流的保存形式，为此提供如下trait。
+abstract class SerializationStream {
+  def writeObject[T:ClassTag](t: T):SerializationStream
+  def writeKey[T:ClassTag](key: T):SerializationStream
+  def writeValue[T:ClassTag](value: T):SerializationStream
+  def flush(): Unit
+  def close(): Unit
+  def writeAll[T:ClassTag](iter: Iterator[T]):SerializationStream = {
+    while(iter.hasNext()) {
+      writeObject(iter.next())
+    }
+    this
+  }
+}
+SerializationStream子类
+	+ JavaSerializationStream
+	+ KryoSerializationStream
+
+abstract class DeserializationStream {
+  def readObject[T:ClassTag](): T
+  def readKey[T:ClassTag](): T = readObject[T]()
+  def readValue[T:ClassTag](): T = readObject[T]()
+  def close(): Unit
+  def asIterator::Iterator[Any] = new NextIterator[Any] {
+    override protected def getNext(): Any = {
+      try{
+        readObject[Any]()
+      } catch {
+        case eof: EOFException =>
+          finished = true
+          null
+      }
+    }
+    override protected def close(): Unit = {
+      DeserializationStream.this.close()
+    }
+  }
+}
+DeserializationStream子类
+	+ JavaDeserializationStream
+	+ KryoDeserializationStream

@@ -144,7 +144,7 @@ private[spark] class JavaSerializerInstance(
  *[Serializable和Externalizable]
  * 1、Externalizable接口继承自Serializable接口，实现Externalizable接口的类完全由自身来控制序列化的行为，
  * 而仅实现Serializable接口的类可以采用默认的序列化方式。
- * 2、实现Externalizable接口的类，必须有public的无参构造器，因为在这种序列化机制中，需要构造器参与。
+ * 2、实现Externalizable接口的类，必须有public的无参构造器，因为在这种序列化机制中需要构造器参与。
  * 3、Externalizable序列化的速度更快，而且数据更小。实际上速度与Serializable差不多。
  *
  * Reading Order：若需要序列化实体类的所有内容建议使用Serializable，若自定义序列内容建议使用Externalizable。

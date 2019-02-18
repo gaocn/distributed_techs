@@ -1,0 +1,173 @@
+【快速入门】
+case class Student(name:String, age: Int) extends Serializable
+
+val kyro = new Kyro()
+val out = new Output(FileOutputStream("std.db"))
+val s = Student("Davide", 23)
+kyro.writeObject(out, s)
+out.clost
+
+
+val in = new Input(FileInputStream("std.db"))
+val s1 = kyro.readObject(input, classOf[Student])
+in.close
+
+assert s == s1
+
+【Kyro提供三种读写方式】
+1、若知道class字节码且对象不为空
+    kyro.writeObject(output, someObject)
+
+    val someObject = kyro.readObject(input, SomeClass)
+2、Kyro考虑到someObject可能为空，因此提供了如下方法
+    kyro.writeObjectOrNull(output, someObject)
+
+    val someObject = kyro.readObjectOrNull(input, SomeClass)
+
+3、实现类的字节码未知且对象可能为空，有时候我们不想手动指定类型，而是将类型也写入序列化结果中，这样反序列化时自动读取解析，虽然牺牲了一些性能存放字节信息但在RPC框架中最常用，更加方便。
+   kyro.writeClassAndObject(output, object)
+   val obj = kyro.readClassAndObject(input).asInstanceOf[SomeClass]
+
+
+【Kyro要点总结】
+Kyro默认支持基本数据类型、枚举、集合、数组、子类多态、循环引用、内部类、泛型等类型的序列化，此外可以扩展Kyro实例：kyro.addDefaultSerializer(SomeClass, SomeSerializerClass)。
+Kyro是线程不安全的，意味着每当需要序列化和反序列化时都需要实例化一次（可借助池化技术），可借助ThreadLocal来维护以保障线程安全同时减少每次使用都需创建实例的开销！
+static final ThreadLocal<Kyro> kyro = new ThreadLocal<>() {
+    protected Kyro initialValue() {
+      Kyro kyro = new Kyro();
+      kyro.setReferences(true); //默认为true
+      kyro.setRegistrationRequired(false); 默认为false
+      return kyro;
+    }
+}
+//使用：kyro.get()
+
+Kyro默认支持(kyro.setRegistrationRequired(false))注册行为: kyro.register(SomeClass)，这会赋予该类一个从0开始的编号，当Kyro注册行为最大的问题是其不保证每次注册同一类时的编号相同，这与注册的顺序有关，即在不同机器、同一机器启动前后同一类可能有不同编号，会导致序列化问题，在分布式项目中一般关闭注册行为。
+Kyro默认支持循环引用，为了追求高性能可以关闭循环引用，但这有时可能不是一个很好的选择。
+
+
+
+【池化的Kyro】
+import org.apache.commons.pool2.ObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPool;
+
+class KyroSerializer {
+   val BUFFER_SIZE = 2048;
+   val MAX_BUFFER_SIZE = 10485760;
+   val kyroPools: ObjectPool[Kryo] = new GenericObjectPool[Kyro](new KyroFactory())
+
+   def serialize[T:ClassTag](obj: T): ByteBuffer = {
+     var kyro: Kyro = null
+     var out: Output = null
+     try{
+       kyro = kyroPools.borrowObject()
+       out = new Output(BUFFER_SIZE, MAX_BUFFER_SIZE)
+       kyro.writeClassAndObject(out, obj)
+       ByteBuffer.wrap(out)
+     }finally{
+       out.close()
+       kyroPools.returnObject(kyro)
+     }
+   }
+
+   def deserialize[T:ClassTag](bytes: ByteBuffer): T = {
+     var kyro: Kyro = null
+     var in: Input = null
+     try{
+       kyro = kyroPools.borrowObject()
+       in = new Input(bytes)
+       kyro.readClassAndObject(in).asInstanceOf[T]
+     }finally{
+       in.close()
+       kyroPools.returnObject(kyro)
+     }
+   }
+}
+
+//==================================   KyroSerializer实现   ========================//
+
+【KyroSerializer实现与相关配置】
+spark.kryoserializer.buffer = 64k，最大值不超过2G
+spark.kryoserializer.buffer.max = 64M 最大值不超过2G
+spark.kryo.referenceTracking = true 默认支持循环引用
+spark.kryo.registrationRequired = false 默认不支持
+spark.kryo.registrator 默认为空，为实现KryoRegistrator接口的类用于注册要序列化的类
+trait KryoRegistrator {
+  def registerClasses(kryo: Kryo)
+}
+spark.kryo.classesToRegister 默认为空，值为逗号分隔的若干个类名，表示要注册的类
+
+class KyroSerializer extends Serializable {
+  val bufferSize = 64
+  val maxBufferSize = 64
+  val referenceTracking = true
+  val registrationRequired = false
+  val userRegistrator = ""
+  val classesToRegister = ""
+
+  override def newInstance():KyroSerializerInstance = {new KryoSerializerInstance(this)}
+  def newKyroOutput(): Output = new Output(bufferSize, math.max(bufferSize,maxBufferSize))
+  def newKyro():Kyro = {
+    //创建Kyro实例并根据上述配置内容配置Kyro
+  }
+}
+
+【KyroSerializerInstance的实现】
+Spark默认采用size=1的池化技术，每一次使用都查看缓存的实例若没有则创建一个实例(borrowKryo)，并在使用完成后的释放该实例(releaseKryo)。
+class KryoSerializerInstance(ks: KyroSerializer) extends SerializerInstance {
+  lazy val input: Input = new Input()
+  lazy val output: Output = ks.newKyroOutput()
+
+  var cachedKyro:Kyro = borrowKryo()
+  //若有缓存的实例则重用之，否则重新创建
+  def borrowKryo():Kyro = {
+    if(cachedKyro != null) {
+      val kyro = cachedKyro
+      kyro.reset()
+      cachedKyro = null
+      kyro
+    } else {
+      ks.newKyro()
+    }
+  }
+  //若已经缓存了一个Kyro实例则释放当前的实例，否则缓存当前实例以便重用
+  def releaseKryo(kyro: Kyro):Unit = {
+    if(cachedKyro ==  null) {
+      cachedKyro = kryo
+    }
+  }
+
+
+  override def serialize[T:ClassTag](obj: T): ByteBuffer = {
+    output.clear()
+    val kyro = borrowKryo()
+    try{
+      kryo.writeClassAndObject(output, obj)
+    } catch {
+      case e: KyroException if e.getMessage.startWith("Buffer Overflow") =>
+        throw new Exception(s"Kyro Serializaztion Failed: ${e.getMessage}")
+    } finally {
+      releaseKryo(kyro)
+    }
+    ByteBuffer.wrap(output)
+  }
+
+  override def deserialize[T:ClassTag](bytes: ByteBuffer): T = {
+    val kyro = borrowKryo()
+    try{
+      input.setBuffer(bytes)
+      kryo.readClassAndObject(input).asInstanceOf[T]
+    } finally {
+      releaseKryo(kyro)
+    }
+  }
+}
+
+
+
+
+
+
+
+
+

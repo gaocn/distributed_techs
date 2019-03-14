@@ -1,0 +1,76 @@
+1、能够将实例编码到ByteBuf的接口，由于多个实例会被编码到同一个ByteBuf中因此要提供被编码实例的长度；
+2、实现Encodable接口的实例应该要实现静态的”decode(ByteBuf)“方法以便由MessageDecoder调用用于解码数据，在解码过程中若传入的ByteBuf不同通过拷贝传入，则需要调用retain方法增加引用计数；
+3、Message.Type中定义所有的消息类型，当实现一个Encodable Message的时候需要将其类型添加到Message.Type中以便能够解析；
+public interface Encodable {
+  int encodedLength();
+  void encode(ByteBuf buf);
+}
+
+public static enum Message.Type implements Encodable {
+  ChunkFetchRequest(0), ChunkFetchSuccess(1), ChunkFetchFailure(2),
+  RpcRequest(3), RpcResponse(4), RpcFailure(5),
+  StreamRequest(6), StreamResponse(7), StreamFailure(8),
+  OneWayMessage(9), User(-1);
+
+  private final byte id;
+  private Type(int id) {
+    assert id < 128 : "Cannot have more than 128 message type"
+    this.id = id;
+  }
+  public byte id(){return this.id;}
+  public int encodedLength(){return 1;}
+  public void encode(ByteBuf buf) {
+    buf.writeByte(id);
+  }
+
+  public static Type decode(ByteBuf buf) {
+    byte id = buf.readByte();
+      switch (id) {
+        case 0: return ChunkFetchRequest;
+        case 1: return ChunkFetchSuccess;
+        case 2: return ChunkFetchFailure;
+        case 3: return RpcRequest;
+        case 4: return RpcResponse;
+        case 5: return RpcFailure;
+        case 6: return StreamRequest;
+        case 7: return StreamResponse;
+        case 8: return StreamFailure;
+        case 9: return OneWayMessage;
+        case -1: throw new IllegalArgumentException("User type messages cannot be decoded.");
+        default: throw new IllegalArgumentException("Unknown message type: " + id);
+  }
+}
+
+
+Message
++----------------------+  body   +-------------------------------------+
++   Type   |   Body    + =====>  + Long | Int | len | bytes | Byte |...+
++----------------------+         +-------------------------------------+
+
+public interface Message extends Encodable {
+  Type type();
+  ManagedBuffer body();
+  boolean isBodyInFrame();
+}
+
+//Token Interface
+public interface RequestMessage extends Message{}
+public interface ResponseMessage extends Message{}
+
+//Message的抽象实现，将Message内存保存在单独的缓存中
+abstract public class AbstractMessage implements Message{
+  private final ManagedBuffer body;
+  private final boolean isBodyInFrame;
+
+  public AbstractMessage(ManagedBuffer body, boolean isBodyInFrame) {
+    this.body = body;
+    this.isBodyInFrame = isBodyInFrame;
+  }
+  @Override
+  public ManagedBuffer body(){return body;}
+  @Override
+  public boolean isBodyInFrame(){return isBodyInFrame;}
+  protected boolean equals(AbstractMessage other){
+    return isBodyInFrame==other.isBodyInFrame && Objects.euqals(this.body,other.body)
+  }
+}

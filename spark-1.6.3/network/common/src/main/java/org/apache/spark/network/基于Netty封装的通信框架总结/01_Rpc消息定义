@@ -1,0 +1,53 @@
+//OneWayMessage不要求有返回消息，由接收端直接处理
+public class OneWayMessage extends AbstractMessage implements RequestMessage{
+  public OneWayMessage(ManagedBuffer body){
+    super(body, true)
+  }
+
+  @Overide
+  public Type type(){return Type.OneWayMessage}
+
+ // The integer (a.k.a. the body size) is not really used, since that information is already
+ // encoded in the frame length. But this maintains backwards compatibility with versions of
+ // RpcRequest that use Encoders.ByteArrays.
+ //消息格式为：length+body，这里只长度写入因此需要4个字节
+  @Overide
+  public int encodedLength(){return 4;}
+
+  @Overide
+  public void encode(ByteBuf buf){
+    buf.writeInt(body().size())
+  }
+
+  public staic OneWayMessage decode(ByteBuf buf){
+    buf.readInt()
+    return OneWayMessage(new NettyManagedBuffer(buf.retain()))
+  }
+
+  @Override
+  public int hashCode(){return Objects.hashCode(body())}
+  @Overide
+  public boolean equals(Object other){
+    if(other instanceOf OneWayMessage) {
+      OneWayMessage o = (OneWayMessage) other;
+      return super.equals(o);
+    }
+    return false;
+  }
+  @Override
+  public String toString() {
+    return Objects.toStringHelper(this)
+      .add("body", body())
+      .toString();
+  }
+}
+
+
+
+
+
+
+
+
+
+

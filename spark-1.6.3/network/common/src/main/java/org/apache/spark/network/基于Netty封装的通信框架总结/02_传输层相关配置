@@ -1,0 +1,18 @@
+spark.${module}.io.mode: 表示使用NIO还是EPOLL方式通信，由底层操作系统决定；
+spark.${module}.io.preferDirectBufs：若为True则Netty会优先分配Off-Heap内存；
+spark.${module}.io.connectionTimeout：传输层连接超时时间，默认为120秒；
+spark.${module}.io.numConnectionsPerPeer 端与端之间最大并发连接数，默认为1；
+spark.${module}.io.backLog请求建立连接的最大队列长度，-1表示超过连接数直接返回错误不缓存；
+spark.${module}.io.serverThreads 在server thread pool中使用的线程数，默认为0表示2倍的Cores数；
+spark.${module}.io.clientThreads 在client thread pool中使用的线程数，默认为0表示2倍的Cores数；
+spark.${module}.io.receiveBuffer Netty接收缓存区(SO_RCVBUF)大小，接收缓冲区和发送缓冲区最优大小为latency*networ_bandwidth，如若延迟为1ms，网络带宽为10Gbps则缓存区大小为1.25MB;
+spark.${module}.io.sendBuffer Netty发送缓存区(SO_SNDBUF)大小，默认为-1；
+spark.${module}.sasl.timeout SASL进行Token交换时RRT超时时间，默认为30秒；
+spark.${module}.io.maxRetries 每个请求出现IO异常（如连接超时）时最大重试次数，默认为3次；
+spark.${module}.io.retryWait 当io.maxRetries有效时，当发生IOException后等待多少时间发送下一次重试请求；
+spark.${module}.io.lazyFD 时候以lazy方式初始化文件描述符，默认为true表示文件描述符只有在数据传输时才进行创建，可以减少打开的文件数量；
+
+spark.port.maxRetries 尝试绑定特定端口的最大重试次数，默认为16；
+spark.storage.memoryMapThreshold 由于OS进行内存映射时当映射的内存大小小于一个PageSize时开销会很大，因此这里规定Spark进行直接内存映射的最大内存大小，小于该值通过传统IO操作读取数据；
+spark.network.sasl.maxEncryptedBlockSize 当SASL启用时，一次加密最大字节数，默认为64k；
+spark.network.sasl.serverAlwaysEncrypt 服务端是否在SASL认证连接通信时进行加密，默认为false；

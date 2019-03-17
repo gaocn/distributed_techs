@@ -763,6 +763,8 @@ abstract class DStream[T: ClassTag] (
    * operator, so this DStream will be registered as an output stream and there materialized.
    */
   def print(num: Int): Unit = ssc.withScope {
+    //最后是调用action进行RDD作业触发，但这里是函数并不会立刻调用，最后会通
+    // 过JobScheduler通过线程池的方式执行，即定义和执行分离！
     def foreachFunc: (RDD[T], Time) => Unit = {
       (rdd: RDD[T], time: Time) => {
         val firstNum = rdd.take(num + 1)

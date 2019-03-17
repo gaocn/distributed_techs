@@ -109,6 +109,7 @@ private[streaming] class ReceivedBlockTracker(
    */
   def allocateBlocksToBatch(batchTime: Time): Unit = synchronized {
     if (lastAllocatedBatchTime == null || batchTime > lastAllocatedBatchTime) {
+      //根据DStreamId获取对应的数据
       val streamIdToBlocks = streamIds.map { streamId =>
           (streamId, getReceivedBlockQueue(streamId).dequeueAll(x => true))
       }.toMap

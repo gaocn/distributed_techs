@@ -16,6 +16,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+#【启单独启动Master的配置参数动】
+#-h HOST， --host HOST 在哪台机器上启动，默认就是本机，这个很少配
+#-p PORT，--port PORT 在机器上启动后，使用哪个端口对外提供服务， master默认是7077， worker默认是随机的，也很少配
+#--webui-port PORT web ui的端口， master默认是8080， worker默认是8081，也很少配
+#-C CORES， --cores CORES 仅限于 worker，总共能让 spark app1 Ication使用多少个 cpu core，默认是当前机器上所有的 cpu core
+#-m MEM --memory MEM 仅限于 worker，总共能让 spark application使用多少内存，是100M或者1G这样的格式
+#-d DIR，--wrok- dir DIR 仅限于 worker，工作目录，默认是 SPARK HOM/wxk目录
+#--properties-file FILE master和 worker加载配置文件的地址，默认是 SPARK HOME/conf/ spark- defaults，conf
 
 # Starts a slave on the machine this script is executed on.
 #

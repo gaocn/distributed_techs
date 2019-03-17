@@ -30,6 +30,7 @@ private[streaming]
 case class JobSet(
     time: Time,
     jobs: Seq[Job],
+    //说明这个作业时谁导致的，即作业的产生是数据驱动的
     streamIdToInputInfo: Map[Int, StreamInputInfo] = Map.empty) {
 
   private val incompleteJobs = new HashSet[Job]()

@@ -58,9 +58,11 @@ private[streaming] class ReceiverSupervisorImpl(
             "Please use streamingContext.checkpoint() to set the checkpoint directory. " +
             "See documentation for more details.")
       }
+      //基于WAL的数据容错
       new WriteAheadLogBasedBlockHandler(env.blockManager, receiver.streamId,
         receiver.storageLevel, env.conf, hadoopConf, checkpointDirOption.get)
     } else {
+      //基于数据备份的数据容错
       new BlockManagerBasedBlockHandler(env.blockManager, receiver.storageLevel)
     }
   }

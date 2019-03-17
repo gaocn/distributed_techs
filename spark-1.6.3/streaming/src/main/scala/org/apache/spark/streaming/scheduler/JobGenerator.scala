@@ -35,6 +35,18 @@ private[scheduler] case class ClearCheckpointData(time: Time) extends JobGenerat
 /**
  * This class generates jobs from DStreams as well as drives checkpointing and cleaning
  * up DStream metadata.
+ *
+ * 负责按照时间配置参数来生成Spark Streaming中的Job。
+ *
+ * JobGenerator中关于"半条"数据如何处理？
+ * 由于Spark Streaming接收数据时按照时间间隔切分数据，就可能会导致当前Batch
+ * Interval中处理的数据是“半条”！
+ *
+ * 如何将技术与人文进行结合？
+ * 1、精神财富、精神力量；
+ * 2、为什么API越来越抽象？ 更高层次的抽象可以统一底层的差别；抽象和具体之间
+ * 可以进行深度的优化，基于rdd开发除非是高手能够写出优化的程序否则很难写出高
+ * 效的程序，抽象让程序更高效！
  */
 private[streaming]
 class JobGenerator(jobScheduler: JobScheduler) extends Logging {
@@ -75,7 +87,14 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   // last batch whose completion,checkpointing and metadata cleanup has been completed
   private var lastProcessedBatch: Time = null
 
-  /** Start generation of jobs */
+  /** Start generation of jobs
+    *
+    * JobGenerator如何初始化？
+    * StreamingContext.start()启动时，首先调用JobScheduler.start方法
+    * 启动作业调度器，在JobScheduler启动时会创建JobGenerator和ReceiverTracker
+    * 并在start方法中启动JobGenerator.start和ReceiverTracker.start
+    *
+    * */
   def start(): Unit = synchronized {
     if (eventLoop != null) return // generator has already been started
 
@@ -92,6 +111,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     }
     eventLoop.start()
 
+    //说明不是第一次启动
     if (ssc.isCheckpointPresent) {
       restart()
     } else {
@@ -244,15 +264,43 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     // Update: This is probably redundant after threadlocal stuff in SparkEnv has been removed.
     SparkEnv.set(ssc.env)
     Try {
+      /**
+        * 数据分配给当前的Job
+        *
+        * 如何处理“半条”数据？首先不可能在一个BatchDuration中处理“半条”数
+        * 据的。这里需要进入[[ReceivedBlockTracker.allocateBlocksToBatch]]
+        * 中查看一下。
+        *
+        * Receiver Supervisor把Receiver接收数据数据存储的时间点为A，而
+        * Receiver Supervisor把数据发送给Driver汇报数据的元数据的时间点
+        * 为B，ReceiverTracker把数据分配给Batch的时间点为C。
+        * A\B\C是有时间的不一致的，由哪一个时间决定了数据分配给谁？由C决定的，
+        * 因为在allocateBlocksToBatch中有同步关键字且是Driver级别的，即
+        * 最终数据被划分进哪个Batch是由allocateBlocksToBatch决定的，即什
+        * 么时候获得锁这个数据就决定了在哪个Batch中，但如果还没有划入之前的任
+        * 何Batch的Metadata都会被划入新的Batch中，所以数据可能产生在上一个
+        * Batch但是可能划分进下一个Batch中，而数据的接收一定是一条一条接收
+        * 所以有半条数据这种情况是不存在的，哪个Receiver解析数据不是一条一条
+        * 的，所以不可能存在半条数据，当Receiver只解析半条数据，没解析完，会
+        * 继续解析，即使解析完了也不一定在这个Batch中执行，也可能放入下一个
+        * Batch中，只有在allocateBlocksToBatch获取锁那一刻才能确定数据在
+        * 哪一个Batch中，
+        *
+        * 注意：这个确定的只是元数据，真正数据是在执行时通过InputInfoTracker
+        * 获取！
+        */
       jobScheduler.receiverTracker.allocateBlocksToBatch(time) // allocate received blocks to batch
-      graph.generateJobs(time) // generate jobs using allocated block
+      //使用刚刚分配的Batch，函数内部也使用同步关键字
+      graph.generateJobs(time) // generate (spark streaming) jobs using allocated block
     } match {
       case Success(jobs) =>
+        //前面只是获取元数据，真正数据是在执行时通过InputInfoTracker获取！
         val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(time)
         jobScheduler.submitJobSet(JobSet(time, jobs, streamIdToInputInfos))
       case Failure(e) =>
         jobScheduler.reportError("Error generating jobs for time " + time, e)
     }
+    //任务执行完成后，进行checkpoint,采用异步提交方式执行，不会阻塞
     eventLoop.post(DoCheckpoint(time, clearCheckpointDataLater = false))
   }
 

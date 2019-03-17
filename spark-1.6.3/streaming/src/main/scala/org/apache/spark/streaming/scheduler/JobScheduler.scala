@@ -37,18 +37,40 @@ private[scheduler] case class ErrorReported(msg: String, e: Throwable) extends J
 /**
  * This class schedules jobs to be run on Spark. It uses the JobGenerator to generate
  * the jobs and runs them using a thread pool.
+ *
+ * JobScheduler是Spark Streaming作业的调度者，是完成Spark Streaming和
+ * Spark Core衔接的控制点，即在Spark Streaming生成作业后由JobScheduler
+ * 交给Spark Core执行。
+ *
+ * Spark Core中生成作业的是SparkContext，而SparkStreaming中生成作业的是
+ * JobGenerator。JobGenerator是根据RDD生成作业，而RDD中是有数据来源的，
+ * 这就需要BlockManager管理器用于获取操作数据的元数据，Spark Streaming作
+ * 为上层抽象框架，提出了ReceiverTracker底层封装了BlockManager。
+ *
+ * Spark Streaming作业最后会调用Spark Context运行作业！
+ *
  */
 private[streaming]
 class JobScheduler(val ssc: StreamingContext) extends Logging {
 
   // Use of ConcurrentHashMap.keySet later causes an odd runtime problem due to Java 7/8 diff
   // https://gist.github.com/AlainODea/1375759b8720a3f9f094
+  //每个Batch Duration对应生成的作业，因为输出可能有多个，所以生成的作业就会多个
   private val jobSets: java.util.Map[Time, JobSet] = new ConcurrentHashMap[Time, JobSet]
+  /**
+    * 从Spark Streaming Context中获取并发作业的配置，在Spark Core上可
+    * 以同时运行多个作业，采用多线程实现，每个Job用一个单独线程运行！超过并发
+    * 作业数时会进入队列中，Job按照FIFO进行调度。
+    *
+    * Spark Core的FIFO调度策略是应用程序级别的！这里是同一个应用程序内部的
+    * 多个Job并发运行！
+    */
   private val numConcurrentJobs = ssc.conf.getInt("spark.streaming.concurrentJobs", 1)
   private val jobExecutor =
     ThreadUtils.newDaemonFixedThreadPool(numConcurrentJobs, "streaming-job-executor")
   private val jobGenerator = new JobGenerator(this)
   val clock = jobGenerator.clock
+  //Spark Streaming监控作业的工具
   val listenerBus = new StreamingListenerBus()
 
   // These two are created only when scheduler starts.
@@ -121,10 +143,16 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
 
   def submitJobSet(jobSet: JobSet) {
     if (jobSet.jobs.isEmpty) {
+      //什么时候没有Job？没有数据时也会生成Job，除非graph.generateJob生
+      // 成失败，注意这个Job不是Spark Core的Job只是一个Spark Streaming
+      // 中的作业的抽象！
       logInfo("No jobs added for time " + jobSet.time)
     } else {
       listenerBus.post(StreamingListenerBatchSubmitted(jobSet.toBatchInfo))
       jobSets.put(jobSet.time, jobSet)
+      //Spark Core中没有Job这个概念，而Spark Streaming中的Job只是负责
+      // 封装业务逻辑，然后用于构造JobHandler交给线程去运行，而真正执行的是
+      //是Spark Core中的Job，这个Job是我们看不到的但确是真正起作用的！
       jobSet.jobs.foreach(job => jobExecutor.execute(new JobHandler(job)))
       logInfo("Added jobs for time " + jobSet.time)
     }

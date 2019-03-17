@@ -24,9 +24,21 @@ import org.apache.spark.streaming.scheduler.Job
 import org.apache.spark.streaming.dstream.{DStream, ReceiverInputDStream, InputDStream}
 import org.apache.spark.util.Utils
 
+/**
+  * 有向无环图，其中一定会表达数据来自于哪里，输出到哪里。
+  *
+  * 例如：以WordCount应用程序为例子
+  * 输入流: SocketInputStream
+  * 输出流：print()时就会将输出流通过ssc.graph.addOutputStream添加
+  *
+  * DStreamGraph就是RDD的模板，框架会根据DStream的依赖关系构建出RDD DAG
+  * 的模板。
+  *
+  */
 final private[streaming] class DStreamGraph extends Serializable with Logging {
-
+  //数据来源：kafka、flume、文件系统、数据库、Server、Socket等
   private val inputStreams = new ArrayBuffer[InputDStream[_]]()
+  //数据流向哪里：数据库、HBase、Redis等
   private val outputStreams = new ArrayBuffer[DStream[_]]()
 
   var rememberDuration: Duration = null
@@ -111,6 +123,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   def generateJobs(time: Time): Seq[Job] = {
     logDebug("Generating jobs for time " + time)
     val jobs = this.synchronized {
+      //可以有多个OutputStream
       outputStreams.flatMap { outputStream =>
         val jobOption = outputStream.generateJob(time)
         jobOption.foreach(_.setCallSite(outputStream.creationSite))

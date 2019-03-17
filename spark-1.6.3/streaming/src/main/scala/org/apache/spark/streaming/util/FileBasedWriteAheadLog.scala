@@ -75,6 +75,9 @@ private[streaming] class FileBasedWriteAheadLog(
    * Write a byte buffer to the log file. This method synchronously writes the data in the
    * ByteBuffer to HDFS. When this method returns, the data is guaranteed to have been flushed
    * to HDFS, and will be available for readers to read.
+   *
+   * 基于WAL框架编写，可以参考相关框架
+   *
    */
   def write(byteBuffer: ByteBuffer, time: Long): FileBasedWriteAheadLogSegment = synchronized {
     var fileSegment: FileBasedWriteAheadLogSegment = null

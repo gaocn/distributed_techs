@@ -96,6 +96,11 @@ private[streaming] case class UpdateReceiverRateLimit(streamUID: Int, newRate: L
  * this class must be created after all input streams have been added and StreamingContext.start()
  * has been called because it needs the final set of input streams at the time of instantiation.
  *
+ * 由于ReceiverTacker负责管理所有的Receiver，所以ReceiverTracker中肯定
+ * 知道如何启动Receiver。
+ *
+ * ReceiverTacker的初始化在JobScheduler.start中完成
+ *
  * @param skipReceiverLaunch Do not launch the receiver. This is useful for testing.
  */
 private[streaming]
@@ -103,6 +108,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
 
   private val receiverInputStreams = ssc.graph.getReceiverInputStreams()
   private val receiverInputStreamIds = receiverInputStreams.map { _.id }
+  //
   private val receivedBlockTracker = new ReceivedBlockTracker(
     ssc.sparkContext.conf,
     ssc.sparkContext.hadoopConfiguration,
@@ -127,6 +133,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
   // This not being null means the tracker has been started and not stopped
   private var endpoint: RpcEndpointRef = null
 
+  //Receiver调度策略
   private val schedulingPolicy = new ReceiverSchedulingPolicy()
 
   // Track the active receiver job number. When a receiver job exits ultimately, countDown will
@@ -416,7 +423,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
       rcvr.setReceiverId(nis.id)
       rcvr
     })
-
+    //确保资源分配的均衡性
     runDummySparkJob()
 
     logInfo("Starting " + receivers.length + " receivers")
@@ -445,8 +452,9 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
     @volatile private var active: Boolean = true
 
     override def receive: PartialFunction[Any, Unit] = {
-      // Local messages
+      // Local messages 确保Receiver一定被启动，通过作业方式实现！
       case StartAllReceivers(receivers) =>
+        //schedulingPolicy负责计算将Receiver可以分配到哪些Executors上
         val scheduledLocations = schedulingPolicy.scheduleReceivers(receivers, getExecutors)
         for (receiver <- receivers) {
           val executors = scheduledLocations(receiver.streamId)
@@ -590,7 +598,23 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
       receiverRDD.setName(s"Receiver $receiverId")
       ssc.sparkContext.setJobDescription(s"Streaming job running receiver $receiverId")
       ssc.sparkContext.setCallSite(Option(ssc.getStartSite()).getOrElse(Utils.getCallSite()))
-
+      /**
+        * 每一个Receiver启动都是运行一个Spark Core的Job作业来启动，改作
+        * 业会运行startReceiverFunc函数并调用supervisor.start()方法该
+        * 方法内部会启动Receiver，Receiver.start启动后启动一个线程用于接
+        * 收数据。
+        *
+        * 为什么要启动一个Spark Core作业来启动Receiver？
+        * 1、确保Receiver一定会被启动，下面代码可以看到当Receiver启动失败
+        * 时会不断进行重启，而Spark Core的Task重启次数是一定的，若一直没有
+        * 启动成功就需要通过发送RestartReceiver再次重新启动，即Job可以无
+        * 限重复启动！
+        * 2、一个一个的Job负责启动一个Receiver实例，比较平均，一般情况下不
+        * 大可能出现两个Receiver在同一个机器上，如果是Task则很有可能的。可
+        * 以保证Receiver吞吐量比较强。
+        *
+        * ReceiverTracker和Receiver是master和slave的关系!
+        */
       val future = ssc.sparkContext.submitJob[Receiver[_], Unit, Unit](
         receiverRDD, startReceiverFunc, Seq(0), (_, _) => Unit, ())
       // We will keep restarting the receiver job until ReceiverTracker is stopped

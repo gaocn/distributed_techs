@@ -106,6 +106,10 @@ private[streaming] class BlockGenerator(
     new RecurringTimer(clock, blockIntervalMs, updateCurrentBuffer, "BlockGenerator")
   private val blockQueueSize = conf.getInt("spark.streaming.blockQueueSize", 10)
   private val blocksForPushing = new ArrayBlockingQueue[Block](blockQueueSize)
+  /**
+    * 一个线程要不断的从Receiver中接收数据，一个线程按照固定的时间间隔将数据
+    * 转化成Block，一个线程要将队列中的Block发送给BlockManager
+    */
   private val blockPushingThread = new Thread() { override def run() { keepPushingBlocks() } }
 
   @volatile private var currentBuffer = new ArrayBuffer[Any]

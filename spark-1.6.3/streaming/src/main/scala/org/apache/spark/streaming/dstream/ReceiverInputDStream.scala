@@ -69,6 +69,8 @@ abstract class ReceiverInputDStream[T: ClassTag](ssc_ : StreamingContext)
   override def compute(validTime: Time): Option[RDD[T]] = {
     val blockRDD = {
 
+      //Driver可能会失败重启，此时定时器已经在运行了，这段compute代码就是在
+      //Driver中运行，因此执行时的数据需要从集群中查找已经接收并存储的数据。
       if (validTime < graph.startTime) {
         // If this is called for any time before the start time of the context,
         // then this returns an empty RDD. This may happen when recovering from a

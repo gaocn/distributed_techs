@@ -32,6 +32,10 @@ class MappedDStream[T: ClassTag, U: ClassTag] (
   override def slideDuration: Duration = parent.slideDuration
 
   override def compute(validTime: Time): Option[RDD[U]] = {
+    /**
+      * 对DStream的操作底层其实就是对RDD的操作，因此说DStream是对RDD的抽
+      * 象！
+      */
     parent.getOrCompute(validTime).map(_.map[U](mapFunc))
   }
 }

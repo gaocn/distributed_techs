@@ -36,6 +36,9 @@ public abstract class WriteAheadLog {
    * such that it can be cleaned later. Note that implementations of this abstract class must
    * ensure that the written data is durable and readable (using the record handle) by the
    * time this function returns.
+   *
+   * 写数据的时候返回的是句柄/应用，根据句柄去读数据而不是扫描所以速度还是挺快的
+   *
    */
   abstract public WriteAheadLogRecordHandle write(ByteBuffer record, long time);
 

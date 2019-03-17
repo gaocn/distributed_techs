@@ -764,6 +764,11 @@ private[spark] class BlockManager(
     // The level we actually use to put the block
     val putLevel = effectiveStorageLevel.getOrElse(level)
 
+    /**
+      * 数据容错
+      * 方式一：数据备份，借助BlockManger实现；
+      * 方式二：WAL记录日志，底层一般是通过HDFS保存保障容错，HDFS默认有三份副本；
+      */
     // If we're storing bytes, then initiate the replication before storing them locally.
     // This is faster as data is already serialized and ready to send.
     val replicationFuture = data match {

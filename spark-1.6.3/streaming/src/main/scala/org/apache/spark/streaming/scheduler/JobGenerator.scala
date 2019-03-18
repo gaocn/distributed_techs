@@ -36,17 +36,18 @@ private[scheduler] case class ClearCheckpointData(time: Time) extends JobGenerat
  * This class generates jobs from DStreams as well as drives checkpointing and cleaning
  * up DStream metadata.
  *
- * 负责按照时间配置参数来生成Spark Streaming中的Job。
+ * 负责按照时间配置参数基于DStream来生成Spark Streaming中的Job，这里的Job相当于Thread要处理的Runnable
+ * 中的业务逻辑的封装，它与SparkCore上的Job是不一样的概念，SparkCore上的Job就是运行的作业，当我们说
+ * SparkCore上的Job我们谈的是具体做的一件事情，而SparkStreaming中的Job由于它是基于SparkCore，所以Spark
+ * Streaming对它进行了封装，是更高层的抽象。
  *
  * JobGenerator中关于"半条"数据如何处理？
- * 由于Spark Streaming接收数据时按照时间间隔切分数据，就可能会导致当前Batch
- * Interval中处理的数据是“半条”！
+ * 由于Spark Streaming接收数据时按照时间间隔切分数据，就可能会导致当前BatchInterval中处理的数据是“半条”！
  *
  * 如何将技术与人文进行结合？
  * 1、精神财富、精神力量；
- * 2、为什么API越来越抽象？ 更高层次的抽象可以统一底层的差别；抽象和具体之间
- * 可以进行深度的优化，基于rdd开发除非是高手能够写出优化的程序否则很难写出高
- * 效的程序，抽象让程序更高效！
+ * 2、为什么API越来越抽象？ 更高层次的抽象可以统一底层的差别；抽象和具体之间可以进行深度的优化，基于rdd开发除
+ * 非是高手能够写出优化的程序否则很难写出高效的程序，抽象让程序更高效！
  */
 private[streaming]
 class JobGenerator(jobScheduler: JobScheduler) extends Logging {
@@ -93,9 +94,9 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     * StreamingContext.start()启动时，首先调用JobScheduler.start方法
     * 启动作业调度器，在JobScheduler启动时会创建JobGenerator和ReceiverTracker
     * 并在start方法中启动JobGenerator.start和ReceiverTracker.start
-    *
     * */
   def start(): Unit = synchronized {
+    //由于需要不断生成的Job，因此需要消息循环体
     if (eventLoop != null) return // generator has already been started
 
     // Call checkpointWriter here to initialize it before eventLoop uses it to avoid a deadlock.
@@ -209,7 +210,9 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /** Starts the generator for the first time */
   private def startFirstTime() {
     val startTime = new Time(timer.getStartTime())
+    //告诉DStreamGraph第一Batch启动的时间
     graph.start(startTime - graph.batchDuration)
+    //从作业生成角度讲，开启timer定时器以便随着时间间隔动态发出生成Job的事件
     timer.start(startTime.milliseconds)
     logInfo("Started JobGenerator at " + startTime)
   }
@@ -265,7 +268,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
     SparkEnv.set(ssc.env)
     Try {
       /**
-        * 数据分配给当前的Job
+        * 将当前Batch的数据分配给当前的Job，注意这里是基于metadata数据分配！
         *
         * 如何处理“半条”数据？首先不可能在一个BatchDuration中处理“半条”数
         * 据的。这里需要进入[[ReceivedBlockTracker.allocateBlocksToBatch]]
@@ -293,9 +296,11 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
       //使用刚刚分配的Batch，函数内部也使用同步关键字
       graph.generateJobs(time) // generate (spark streaming) jobs using allocated block
     } match {
+      //job为业务逻辑代码，RDD之间的依赖也会封装成一个函数，其实是最后一个函数，然后从后往前推进行函数展开
       case Success(jobs) =>
         //前面只是获取元数据，真正数据是在执行时通过InputInfoTracker获取！
         val streamIdToInputInfos = jobScheduler.inputInfoTracker.getInfo(time)
+        //基于当前Batch Interval中的数据以及业务逻辑生成一个JobSet
         jobScheduler.submitJobSet(JobSet(time, jobs, streamIdToInputInfos))
       case Failure(e) =>
         jobScheduler.reportError("Error generating jobs for time " + time, e)

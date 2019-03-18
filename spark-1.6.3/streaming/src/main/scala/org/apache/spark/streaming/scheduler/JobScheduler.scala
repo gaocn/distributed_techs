@@ -153,6 +153,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
       //Spark Core中没有Job这个概念，而Spark Streaming中的Job只是负责
       // 封装业务逻辑，然后用于构造JobHandler交给线程去运行，而真正执行的是
       //是Spark Core中的Job，这个Job是我们看不到的但确是真正起作用的！
+      //JobHandler就是Runnable接口，进一步说明Job就是业务逻辑代表了RDD的依赖关系
       jobSet.jobs.foreach(job => jobExecutor.execute(new JobHandler(job)))
       logInfo("Added jobs for time " + jobSet.time)
     }

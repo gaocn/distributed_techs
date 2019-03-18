@@ -55,6 +55,9 @@ import org.apache.spark.util.{CallSite, MetadataCleaner, Utils}
  *  - A list of other DStreams that the DStream depends on
  *  - A time interval at which the DStream generates an RDD
  *  - A function that is used to generate an RDD after each time interval
+ *
+ * DStream为RDD的模板，DStream在时间空间上的实例就是RDDs！离散流又说明彼此之间没有关系。
+ *
  */
 
 abstract class DStream[T: ClassTag] (

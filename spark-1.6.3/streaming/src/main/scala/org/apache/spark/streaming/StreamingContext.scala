@@ -627,6 +627,10 @@ class StreamingContext private[streaming] (
         uiTab.foreach(_.attach())
         logInfo("StreamingContext started")
       case ACTIVE =>
+	      /**
+		      * 为什么不能创建多个StreamingContext？因为同一个Spark应用程序中不允许有多个
+		      * SparkContext！
+		      */
         logWarning("StreamingContext has already been started")
       case STOPPED =>
         throw new IllegalStateException("StreamingContext has already been stopped")

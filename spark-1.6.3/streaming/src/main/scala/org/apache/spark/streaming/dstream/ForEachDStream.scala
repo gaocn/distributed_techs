@@ -29,10 +29,16 @@ import scala.reflect.ClassTag
  * @param displayInnerRDDOps Whether the detailed callsites and scopes of the RDDs generated
  *                           by `foreachFunc` will be displayed in the UI; only the scope and
  *                           callsite of `DStream.foreachRDD` will be displayed.
+ *
+ * DStream的子类中只有ForEachDStream复写了DStream的generateJob方法！！
+ * 也就是说最后作业的生成，是由JobGenerator调用ForEachDStream的generateJob
+ * 完成的。
  */
 private[streaming]
 class ForEachDStream[T: ClassTag] (
     parent: DStream[T],
+    //foreachFunc函数为DStream中的最后一步操作及Action的封装，之前的操作
+    // 通过(根据DStream依赖关系)函数展开的方式进行
     foreachFunc: (RDD[T], Time) => Unit,
     displayInnerRDDOps: Boolean
   ) extends DStream[Unit](parent.ssc) {

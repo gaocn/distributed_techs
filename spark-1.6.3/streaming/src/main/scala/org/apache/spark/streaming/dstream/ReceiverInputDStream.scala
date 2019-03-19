@@ -126,6 +126,7 @@ abstract class ReceiverInputDStream[T: ClassTag](ssc_ : StreamingContext)
             "To prevent such data loss, enabled Write Ahead Log (see programming guide " +
             "for more details.")
         }
+        //RDD的生成是基于Spark Context
         new BlockRDD[T](ssc.sc, validBlockIds)
       }
     } else {

@@ -603,6 +603,8 @@ class StreamingContext private[streaming] (
             // Start the streaming scheduler in a new thread, so that thread local properties
             // like call sites and job groups can be reset without affecting those of the
             // current thread.
+            //这里启动的线程是调度层面开启的，而我们在setMaster("local[4]")中执行的线程数是运行Job时启动
+            // 的线程数，而框架层面想开辟多少线程开辟多少，与Job应用程序指定多少是没有关系的！
             ThreadUtils.runInNewThread("streaming-start") {
               sparkContext.setCallSite(startSite.get)
               sparkContext.clearJobGroup()

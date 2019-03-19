@@ -64,6 +64,11 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     *
     * Spark Core的FIFO调度策略是应用程序级别的！这里是同一个应用程序内部的
     * 多个Job并发运行！
+    *
+    * 默认情况下没有必要该并发度，为什么有时候需要修改并发度？有时候一个应用程
+    * 序有多个输出，会有多个Job的执行，由于在同一个Batch Duration中各自Job
+    * 之间没有必要相互等待，因此可以调整作业并发度。
+    *
     */
   private val numConcurrentJobs = ssc.conf.getInt("spark.streaming.concurrentJobs", 1)
   private val jobExecutor =
@@ -73,7 +78,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
   //Spark Streaming监控作业的工具
   val listenerBus = new StreamingListenerBus()
 
-  // These two are created only when scheduler starts.
+  // These two are created only when scheduler starts. 而不是在scheduler创建的时候！
   // eventLoop not being null means the scheduler has been started and not stopped
   var receiverTracker: ReceiverTracker = null
   // A tracker to track all the input stream information as well as processed record number
@@ -85,6 +90,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
     if (eventLoop != null) return // scheduler has already been started
 
     logDebug("Starting JobScheduler")
+    //好处是：可以直接写业务代码，将调度和业务区分开来(解耦合)！ 涉及：代码的架构和可维护性这是一线公司代码的要求！
     eventLoop = new EventLoop[JobSchedulerEvent]("JobScheduler") {
       override protected def onReceive(event: JobSchedulerEvent): Unit = processEvent(event)
 

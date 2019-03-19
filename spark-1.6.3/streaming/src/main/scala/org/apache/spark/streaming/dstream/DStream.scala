@@ -677,7 +677,7 @@ abstract class DStream[T: ClassTag] (
 
   /**
    * Apply a function to each RDD in this DStream. This is an output operator, so
-   * 'this' DStream will be registered as an output stream and therefore materialized.
+   * 'this' DStream will be registered as an output stream and therefore materialized(输出).
    * @param foreachFunc foreachRDD function
    * @param displayInnerRDDOps Whether the detailed callsites and scopes of the RDDs generated
    *                           in the `foreachFunc` to be displayed in the UI. If `false`, then
@@ -687,6 +687,10 @@ abstract class DStream[T: ClassTag] (
   private def foreachRDD(
       foreachFunc: (RDD[T], Time) => Unit,
       displayInnerRDDOps: Boolean): Unit = {
+    //foreachRDD会创建一个ForEachDStream，foreachRDD是transformation
+    // 级别的操作，若要像变为Action就需要依赖foreachFunc。
+    //DStream的子类中只有ForEachDStream复写了DStream的generateJob方法！！
+    //也就是说最后作业的生成，是由JobGenerator调用ForEachDStream的generateJob，
     new ForEachDStream(this,
       context.sparkContext.clean(foreachFunc, false), displayInnerRDDOps).register()
   }
@@ -766,6 +770,8 @@ abstract class DStream[T: ClassTag] (
    * operator, so this DStream will be registered as an output stream and there materialized.
    */
   def print(num: Int): Unit = ssc.withScope {
+    //DStream中的Action方法最后会调用foreachRDD，即所有的都说最终都会基于
+    // RDD进行，进一步说明：DStream是RDD的封装！！
     //最后是调用action进行RDD作业触发，但这里是函数并不会立刻调用，最后会通
     // 过JobScheduler通过线程池的方式执行，即定义和执行分离！
     def foreachFunc: (RDD[T], Time) => Unit = {

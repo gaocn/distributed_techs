@@ -152,15 +152,31 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
    */
   private val receiverPreferredLocations = new HashMap[Int, Option[String]]
 
-  /** Start the endpoint and receiver execution thread. */
+  /**
+    * Start the endpoint and receiver execution thread.
+    * 启动消息通信体同时启动Receiver执行的线程
+    *
+    * 为什么启动RPC消息通信体？因为ReceiverTracker负责监控集群中的所有Receiver，
+    * 集群中的所有Receiver反过来需要像ReceiverTracker汇报状态和接收数据的
+    * 信息，同时由ReceiverTracker负责管理Receiver的生命周期。
+    *
+    * */
+
   def start(): Unit = synchronized {
     if (isTrackerStarted) {
       throw new SparkException("ReceiverTracker already started")
     }
 
+    /**
+      * Receiver的启动是基于输入数据流，若没有InputDStreams则不会启动Receivers，
+      * 因此若不需要启动Receiver，将InputDStreams设置为空即可。
+      *
+      */
     if (!receiverInputStreams.isEmpty) {
+      //消息通信体
       endpoint = ssc.env.rpcEnv.setupEndpoint(
         "ReceiverTracker", new ReceiverTrackerEndpoint(ssc.env.rpcEnv))
+      //一般为false，测试时使用
       if (!skipReceiverLaunch) launchReceivers()
       logInfo("ReceiverTracker started")
       trackerState = Started
@@ -416,9 +432,16 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
   /**
    * Get the receivers from the ReceiverInputDStreams, distributes them to the
    * worker nodes as a parallel collection, and runs them.
+   * 基于ReceiverInputDStreams获得具体的Receiver实例(在worker中启动了
+   * 该Receiver)，然后将其分配到Executor上并行执行。
+   *
+   * ReceiverInputDStreams是在Driver端，可以认为是Receiver的元数据。
    */
   private def launchReceivers(): Unit = {
+    //一个InputDStream只会产生一个Receiver！！
     val receivers = receiverInputStreams.map(nis => {
+      //每个具体ReceiverInputDStream中会有Receiver的实现用于运行在Executor
+      // 上接收数据
       val rcvr = nis.getReceiver()
       rcvr.setReceiverId(nis.id)
       rcvr
@@ -456,19 +479,28 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
       case StartAllReceivers(receivers) =>
         //schedulingPolicy负责计算将Receiver可以分配到哪些Executors上
         val scheduledLocations = schedulingPolicy.scheduleReceivers(receivers, getExecutors)
+        //每个receiver都用一个作业来启动
         for (receiver <- receivers) {
+          //一个Receiver可以运行在多个Executors，因此这里获取哪些Executors可以运行Receiver
           val executors = scheduledLocations(receiver.streamId)
           updateReceiverScheduledExecutors(receiver.streamId, executors)
           receiverPreferredLocations(receiver.streamId) = receiver.preferredLocation
+          //确认Receiver的运行位置后，启动Receiver
           startReceiver(receiver, executors)
         }
       case RestartReceiver(receiver) =>
+        /**
+          * 在重试启动Receiver时会遍历所有Receiver可能运行的Executors最
+          * 大程度的保证负责均衡并且增加Receiver运行成功的机会。
+          */
         // Old scheduled executors minus the ones that are not active any more
+        //不重试，直接将运行失败的Executor减掉
         val oldScheduledExecutors = getStoredScheduledExecutors(receiver.streamId)
         val scheduledLocations = if (oldScheduledExecutors.nonEmpty) {
             // Try global scheduling again
             oldScheduledExecutors
           } else {
+            //若可选的Executors为空，则重新进行调度
             val oldReceiverInfo = receiverTrackingInfos(receiver.streamId)
             // Clear "scheduledLocations" to indicate we are going to do local scheduling
             val newReceiverInfo = oldReceiverInfo.copy(
@@ -549,6 +581,8 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
 
     /**
      * Start a receiver along with its scheduled executors
+     * 这个意思是：Spark Streaming框架决定运行Receiver在哪个Executor上
+     * scheduledLocations是机器级别的而不是Executor级别的！
      */
     private def startReceiver(
         receiver: Receiver[_],
@@ -569,6 +603,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         new SerializableConfiguration(ssc.sparkContext.hadoopConfiguration)
 
       // Function to start the receiver on the worker node
+      //在具体WorkerNode上启动Receiver，
       val startReceiverFunc: Iterator[Receiver[_]] => Unit =
         (iterator: Iterator[Receiver[_]]) => {
           if (!iterator.hasNext) {
@@ -578,12 +613,16 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
           if (TaskContext.get().attemptNumber() == 0) {
             val receiver = iterator.next()
             assert(iterator.hasNext == false)
+
+            //Receiver监控器，同时负责写数据
             val supervisor = new ReceiverSupervisorImpl(
               receiver, SparkEnv.get, serializableHadoopConf.value, checkpointDirOption)
+            //启动Receiver
             supervisor.start()
             supervisor.awaitTermination()
           } else {
             // It's restarted by TaskScheduler, but we want to reschedule it again. So exit it.
+            //也就是说：重新启动Receiver不是通过失败重试(不会重试)而是通过重新调度作业重新执行
           }
         }
 
@@ -595,6 +634,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
           val preferredLocations = scheduledLocations.map(_.toString).distinct
           ssc.sc.makeRDD(Seq(receiver -> preferredLocations))
         }
+      //说明receiverRDD中只有一个Receiver
       receiverRDD.setName(s"Receiver $receiverId")
       ssc.sparkContext.setJobDescription(s"Streaming job running receiver $receiverId")
       ssc.sparkContext.setCallSite(Option(ssc.getStartSite()).getOrElse(Utils.getCallSite()))
@@ -614,6 +654,18 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
         * 以保证Receiver吞吐量比较强。
         *
         * ReceiverTracker和Receiver是master和slave的关系!
+        *
+        * 问题：假设Spark Streaming应用程序有10个InputDStream，就会产生
+        * 10个Receiver，这里的submitJob中的作业是启动一个Receiver还是一
+        * 次性把所有的Receiver一起启动？
+        * 由于receiverRDD中只有一个元素，因此每一次提交一个Spark Job只是
+        * 启动一个Receiver。
+        * 采用一个Job把所有Receiver都启动的问题：
+        * 1、多个Receiver可能运行在同一个Executor上，分布不均、数据倾斜；
+        * 2、Job失败导致所有Receiver失败；
+        * 而每个Receiver采用一个Job方式启动避免了上述的两个问题且保证一定会
+        * 启动Receiver，并且在重试启动Receiver时会遍历所有Receiver可能运
+        * 行的Executors最大程度的保证负责均衡并且增加Receiver运行成功的机会。
         */
       val future = ssc.sparkContext.submitJob[Receiver[_], Unit, Unit](
         receiverRDD, startReceiverFunc, Seq(0), (_, _) => Unit, ())
@@ -634,6 +686,7 @@ class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false
             logInfo(s"Restarting Receiver $receiverId")
             self.send(RestartReceiver(receiver))
           }
+          //采用线程池可以并发启动Receiver，因为各个Receiver之间没有关联，因此可以并发启动；
       }(submitJobThreadPool)
       logInfo(s"Receiver ${receiver.streamId} started")
     }

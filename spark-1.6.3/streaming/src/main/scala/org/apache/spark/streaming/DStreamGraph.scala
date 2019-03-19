@@ -37,6 +37,8 @@ import org.apache.spark.util.Utils
   */
 final private[streaming] class DStreamGraph extends Serializable with Logging {
   //数据来源：kafka、flume、文件系统、数据库、Server、Socket等
+  //在数据输入是通过创建多个输入流实现，这里就会有多个
+  //Receivers与DStreamGraph中的InputDStreams是一一对应的
   private val inputStreams = new ArrayBuffer[InputDStream[_]]()
   //数据流向哪里：数据库、HBase、Redis等
   private val outputStreams = new ArrayBuffer[DStream[_]]()

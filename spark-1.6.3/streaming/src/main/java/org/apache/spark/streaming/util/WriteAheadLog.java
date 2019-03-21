@@ -27,6 +27,9 @@ import java.util.Iterator;
  * to save the received data (by receivers) and associated metadata to a reliable storage, so that
  * they can be recovered after driver failures. See the Spark documentation for more information
  * on how to plug in your own custom implementation of a write ahead log.
+ *
+ * 顺序写，但支持随机读，因此WAL效率还是比较高的，
+ *
  */
 @org.apache.spark.annotation.DeveloperApi
 public abstract class WriteAheadLog {

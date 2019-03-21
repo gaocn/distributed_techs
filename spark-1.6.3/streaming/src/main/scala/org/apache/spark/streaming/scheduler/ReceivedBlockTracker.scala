@@ -84,6 +84,7 @@ private[streaming] class ReceivedBlockTracker(
   /** Add received block. This event will get written to the write ahead log (if enabled). */
   def addBlock(receivedBlockInfo: ReceivedBlockInfo): Boolean = {
     try {
+      //如果WAL开启则首先记录日志，否则直接返回true
       val writeResult = writeToLog(BlockAdditionEvent(receivedBlockInfo))
       if (writeResult) {
         synchronized {
@@ -106,6 +107,13 @@ private[streaming] class ReceivedBlockTracker(
   /**
    * Allocate all unallocated blocks to the given batch.
    * This event will get written to the write ahead log (if enabled).
+   *
+   * 根据时间间隔将该时间间隔中的数据划分为一个Batch，并将其交给该Batch Interval
+   * 中的作业去处理。JobGenerator在生成作业时会调用该函数获取指定Batch中的
+   * 数据。
+   *
+   * 门面设计模式：ReceiverTracker和ReceivedBlockTracker，内部的实际干
+    * 事情的是ReceivedBlockTracker
    */
   def allocateBlocksToBatch(batchTime: Time): Unit = synchronized {
     if (lastAllocatedBatchTime == null || batchTime > lastAllocatedBatchTime) {
@@ -115,6 +123,7 @@ private[streaming] class ReceivedBlockTracker(
       }.toMap
       val allocatedBlocks = AllocatedBlocks(streamIdToBlocks)
       if (writeToLog(BatchAllocationEvent(batchTime, allocatedBlocks))) {
+        //过去batchTime时间间隔内接收到的数据
         timeToAllocatedBlocks.put(batchTime, allocatedBlocks)
         lastAllocatedBatchTime = batchTime
       } else {
@@ -239,6 +248,7 @@ private[streaming] class ReceivedBlockTracker(
           false
       }
     } else {
+      //不需要WAL，直接通过BlockManager写入
       true
     }
   }

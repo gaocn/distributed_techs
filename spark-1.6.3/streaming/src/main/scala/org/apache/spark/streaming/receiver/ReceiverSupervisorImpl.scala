@@ -39,6 +39,13 @@ import org.apache.spark.{Logging, SparkEnv, SparkException}
  * which provides all the necessary functionality for handling the data received by
  * the receiver. Specifically, it creates a [[org.apache.spark.streaming.receiver.BlockGenerator]]
  * object that is used to divide the received data stream into blocks of data.
+ *
+ * ReceiverSupervisor负责存储Receiver接收数据，Receiver把接收的数据给
+ * ReceiverSupervisor，ReceiverSupervisor存储成功后，会把数据的元数据
+ * 发送给Driver中ReceiverTracker。
+ *
+ * Receiver接收数据一般是一条一条的接收！
+ *
  */
 private[streaming] class ReceiverSupervisorImpl(
     receiver: Receiver[_],
@@ -49,7 +56,7 @@ private[streaming] class ReceiverSupervisorImpl(
 
   private val host = SparkEnv.get.blockManager.blockManagerId.host
   private val executorId = SparkEnv.get.blockManager.blockManagerId.executorId
-
+	//通过ReceivedBlockHandler写数据有两种方式：1、WAL；2、BlockManager直接存储；
   private val receivedBlockHandler: ReceivedBlockHandler = {
     if (WriteAheadLogUtils.enableReceiverLog(env.conf)) {
       if (checkpointDirOption.isEmpty) {
@@ -58,11 +65,11 @@ private[streaming] class ReceiverSupervisorImpl(
             "Please use streamingContext.checkpoint() to set the checkpoint directory. " +
             "See documentation for more details.")
       }
-      //基于WAL的数据容错
+      //基于WAL的数据容错，因为Receiver可能很多，因此需要Receiver详细信息以便做标识
       new WriteAheadLogBasedBlockHandler(env.blockManager, receiver.streamId,
         receiver.storageLevel, env.conf, hadoopConf, checkpointDirOption.get)
     } else {
-      //基于数据备份的数据容错
+      //基于数据备份的数据容错，与WAL相比只需要存储级别，因为底层是基于RDD的容错实现
       new BlockManagerBasedBlockHandler(env.blockManager, receiver.storageLevel)
     }
   }
@@ -198,6 +205,7 @@ private[streaming] class ReceiverSupervisorImpl(
     // Cleanup BlockGenerators that have already been stopped
     registeredBlockGenerators --= registeredBlockGenerators.filter{ _.isStopped() }
 
+    //说明：一个BlockGenerator只服务于一个InputDStream
     val newBlockGenerator = new BlockGenerator(blockGeneratorListener, streamId, env.conf)
     registeredBlockGenerators += newBlockGenerator
     newBlockGenerator

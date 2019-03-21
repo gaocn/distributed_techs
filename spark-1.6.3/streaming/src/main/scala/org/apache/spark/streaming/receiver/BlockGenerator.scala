@@ -72,12 +72,17 @@ private[streaming] trait BlockGeneratorListener {
  *
  * Note: Do not create BlockGenerator instances directly inside receivers. Use
  * `ReceiverSupervisor.createBlockGenerator` to create a BlockGenerator and use it.
+ * ReceiverSupervisor是先于Receiver启动的，而BlockGenerator中有两条线程，由于线程启动的延迟
+ * 可能会导致来不及处理数据，可能会在Receiver存储数据时报错。
  */
 private[streaming] class BlockGenerator(
     listener: BlockGeneratorListener,
     receiverId: Int,
     conf: SparkConf,
     clock: Clock = new SystemClock()
+   //BlockGenerator限速是通过进程RateLimiter实现限定数据的写(存储)速度，
+    // 进而限定数据流动的速度，而BlockGenerator不能限定数据流入速度。通过限
+    // 制数据存储速度进而限定输入流入速度。
   ) extends RateLimiter(conf) with Logging {
 
   private case class Block(id: StreamBlockId, buffer: ArrayBuffer[Any])
@@ -99,12 +104,17 @@ private[streaming] class BlockGenerator(
   }
   import GeneratorState._
 
+  //多长时间会产生一个Block，即对应RDD中的一个Partition，默认情况下1秒生成
+  // 5个Partition，实际经验blockInterval不能低于50ms，否则一个Task计算
+  // 的数据很少，而且写磁盘频繁效率不高。
   private val blockIntervalMs = conf.getTimeAsMs("spark.streaming.blockInterval", "200ms")
   require(blockIntervalMs > 0, s"'spark.streaming.blockInterval' should be a positive value")
 
+  //利用定时器将数据不断的合并缓冲区中的数据为Block
   private val blockIntervalTimer =
     new RecurringTimer(clock, blockIntervalMs, updateCurrentBuffer, "BlockGenerator")
   private val blockQueueSize = conf.getInt("spark.streaming.blockQueueSize", 10)
+  //队列中待写入磁盘的数据
   private val blocksForPushing = new ArrayBlockingQueue[Block](blockQueueSize)
   /**
     * 一个线程要不断的从Receiver中接收数据，一个线程按照固定的时间间隔将数据
@@ -232,7 +242,14 @@ private[streaming] class BlockGenerator(
 
   def isStopped(): Boolean = state == StoppedAll
 
-  /** Change the buffer to which single records are added to. */
+  /** Change the buffer to which single records are added to.
+    *
+    * 根据接收到一条一条的数据放到缓存中，然后把缓冲中的内容按照时间或尺寸合
+    * 并为Block，利用定时器将数据不断的合并为Block。
+    *
+    * 数据不断的进入addData与数据不断合并为BlockupdateCurrentBuffer是分
+    * 离的。
+    */
   private def updateCurrentBuffer(time: Long): Unit = {
     try {
       var newBlock: Block = null

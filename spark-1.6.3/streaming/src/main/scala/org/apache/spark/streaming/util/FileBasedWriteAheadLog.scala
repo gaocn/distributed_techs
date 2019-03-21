@@ -48,7 +48,7 @@ import org.apache.spark.{Logging, SparkConf}
 private[streaming] class FileBasedWriteAheadLog(
     conf: SparkConf,
     logDirectory: String,
-    hadoopConf: Configuration,
+    hadoopConf: Configuration, //代表支持的文件系统类型，如本地磁盘、HDFS等
     rollingIntervalSecs: Int,
     maxFailures: Int,
     closeFileAfterWrite: Boolean
@@ -205,7 +205,10 @@ private[streaming] class FileBasedWriteAheadLog(
     logInfo("Stopped write ahead log manager")
   }
 
-  /** Get the current log writer while taking care of rotation */
+  /** Get the current log writer while taking care of rotation
+    *
+    * 不同时间和条件下写不同的文件，会有很多小文件在目录之下。
+    * */
   private def getLogWriter(currentTime: Long): FileBasedWriteAheadLogWriter = synchronized {
     if (currentLogWriter == null || currentTime > currentLogWriterStopTime) {
       resetWriter()

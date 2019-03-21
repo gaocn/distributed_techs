@@ -43,6 +43,8 @@ private[streaming] object ReceiverState extends Enumeration {
 /**
  * Messages used by the NetworkReceiver and the ReceiverTracker to communicate
  * with each other.
+ *
+ * sealed表明该文件中有ReceiverTrackerMessage的所有子类!
  */
 private[streaming] sealed trait ReceiverTrackerMessage
 private[streaming] case class RegisterReceiver(
@@ -96,8 +98,8 @@ private[streaming] case class UpdateReceiverRateLimit(streamUID: Int, newRate: L
  * this class must be created after all input streams have been added and StreamingContext.start()
  * has been called because it needs the final set of input streams at the time of instantiation.
  *
- * 由于ReceiverTacker负责管理所有的Receiver，所以ReceiverTracker中肯定
- * 知道如何启动Receiver。
+ * ReceiverTracker负责Receiver的管理：启动、回收、执行过程中接收数据的管
+ * 理、容错(重启)。
  *
  * ReceiverTacker的初始化在JobScheduler.start中完成
  *
@@ -106,6 +108,7 @@ private[streaming] case class UpdateReceiverRateLimit(streamUID: Int, newRate: L
 private[streaming]
 class ReceiverTracker(ssc: StreamingContext, skipReceiverLaunch: Boolean = false) extends Logging {
 
+	//所有的InputDStream都会首先交给DStreamGraph
   private val receiverInputStreams = ssc.graph.getReceiverInputStreams()
   private val receiverInputStreamIds = receiverInputStreams.map { _.id }
   //

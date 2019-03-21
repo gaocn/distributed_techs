@@ -32,7 +32,7 @@ import org.apache.spark.util.{Utils, ThreadUtils}
  * Abstract class that is responsible for supervising a Receiver in the worker.
  * It provides all the necessary interfaces for handling the data received by the receiver.
  */
-private[streaming] abstract class ReceiverSupervisor(
+private[streaming] abstract class ReceiverSupervisor  (
     receiver: Receiver[_],
     conf: SparkConf
   ) extends Logging {

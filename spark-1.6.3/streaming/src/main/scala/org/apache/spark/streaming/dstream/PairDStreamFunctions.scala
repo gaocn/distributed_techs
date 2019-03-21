@@ -358,8 +358,16 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    * transformation can be specified using [[StateSpec]] class. The state data is accessible in
    * as a parameter of type [[State]] in the mapping function.
    *
+   * 使用一个函数对K-V元素进行状态维护和更新，在更新和维护历史状态时都是基于
+   * Key进行的。更新操作的函数通过StateSpec类进行了封装，
+   *
    * Example of using `mapWithState`:
    * {{{
+   *     可以将State看做是一个内存数据表，通过API对其进行操作，该表中记录了
+   *     状态维护中的所有状态，mappingFunction表示对内存表中的哪个Key对应
+   *     的记录进行操作，输入的数据为value，通过将输入数据和Key对应的表中记
+   *     录的值进行操作得到新的状态，并更新到表中。
+   *
    *    // A mapping function that maintains an integer state and return a String
    *    def mappingFunction(key: String, value: Option[Int], state: State[Int]): Option[String] = {
    *      // Use state.exists(), state.get(), state.update() and state.remove()
@@ -412,6 +420,12 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
       updateFunc: (Seq[V], Option[S]) => Option[S],
       numPartitions: Int
     ): DStream[(K, S)] = ssc.withScope {
+    //默认为HashPartitioner，并行度为默认并行度，需要注意的是：Spark SQL
+    // On Hive操作Hive中的数据库表时，配置了一个并行度，对Spark SQL On
+    // Hive的方式是不会生效的，即partition数目不受自定义并行度的控制，这个
+    // 是Spark SQL的一个特殊情况，导致并行度太低，因为RDD的并行度继承的，
+    // 后面并行度也会很低这就影响后续执行情况(因为本来可以并行度为300现在确
+    // 是3)，这就导致GC等一系列情况，这个时候就需要repartition！
     updateStateByKey(updateFunc, defaultPartitioner(numPartitions))
   }
 
@@ -489,12 +503,15 @@ class PairDStreamFunctions[K, V](self: DStream[(K, V)])
    *                   or added in this way. It is up to the developer to decide whether to
    *                   remember the  partitioner despite the key being changed.
    * @param partitioner Partitioner for controlling the partitioning of each RDD in the new
-   *                    DStream
+   *                    DStream。
+    *                   默认为HashPartitioner，特点是Shuffle高，需要排序等一大堆东西。
    * @param rememberPartitioner Whether to remember the paritioner object in the generated RDDs.
    * @param initialRDD initial state value of each key.
    * @tparam S State type
    */
   def updateStateByKey[S: ClassTag](
+      // K为键，Seq[V]：历史数据，Option[S]：新值可能有也可能没有，
+      // Option[S]：产生结果可能有也可能没有
       updateFunc: (Iterator[(K, Seq[V], Option[S])]) => Iterator[(K, S)],
       partitioner: Partitioner,
       rememberPartitioner: Boolean,

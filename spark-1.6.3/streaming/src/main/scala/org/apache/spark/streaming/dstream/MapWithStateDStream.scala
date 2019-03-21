@@ -106,6 +106,11 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
     parent: DStream[(K, V)], spec: StateSpecImpl[K, V, S, E])
   extends DStream[MapWithStateRDDRecord[K, S, E]](parent.context) {
 
+  /**
+    * 持久化方式：内存缓存
+    * 为什么能保证MEMORY_ONLY方式？
+    * 因为基于内存数据结构，并且不断更新该内存数据结构而不是创建新的对象。
+    */
   persist(StorageLevel.MEMORY_ONLY)
 
   private val partitioner = spec.getPartitioner().getOrElse(

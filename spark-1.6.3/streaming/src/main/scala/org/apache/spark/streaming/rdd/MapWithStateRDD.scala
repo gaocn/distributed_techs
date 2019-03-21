@@ -47,11 +47,14 @@ private[streaming] object MapWithStateRDDRecord {
     // Create a new state map by cloning the previous one (if it exists) or by creating an empty one
     val newStateMap = prevRecord.map { _.stateMap.copy() }. getOrElse { new EmptyStateMap[K, S]() }
 
-    val mappedData = new ArrayBuffer[E]
+    val mappedData = new ArrayBuffer[E] //最后要返回的值
     val wrappedState = new StateImpl[S]()
 
     // Call the mapping function on each record in the data iterator, and accordingly
     // update the states touched, and collect the data returned by the mapping function
+    //遍历当前Batch中的所有数据，然后使用自定义的函数对<当前Batch>中的数据进行计算，并更新newStateMap
+    // 数据结构，该数据结构是保存了整个历史数据的。没有对历史数据进行重新计算或遍历，而是根据当前Batch数
+    // 据更新newStateMap数据结构（类似数据表的更新），因此mapWithState的效率会高很多！！！
     dataIterator.foreach { case (key, value) =>
       wrappedState.wrap(newStateMap.get(key))
       val returned = mappingFunction(batchTime, key, Some(value), wrappedState)
@@ -74,7 +77,13 @@ private[streaming] object MapWithStateRDDRecord {
         newStateMap.remove(key)
       }
     }
-
+    //每个时间窗口进行状态更新，这个RDD的Partition没有变，但是Partition内
+    // 部的数据变了，虽然RDD不可变，但在RDD内部封装的数据结构的内容可以改变。
+    //因此它借助RDD的不变性，同时整合的数据结构的可变特征。
+    //问题：Spark能不能处理变化的数据？RDD本身不可变，但是可以处理变化的数据，
+    // 只不过需要自定义RDD内部的数据结构。
+    //观点：RDD不可变，所以他处理的数据就是不可变的？ 该观点后半部分错误，数
+    // 据源可以变化，只不过需要我们自己维护或改变这些数据。
     MapWithStateRDDRecord(newStateMap, mappedData)
   }
 }

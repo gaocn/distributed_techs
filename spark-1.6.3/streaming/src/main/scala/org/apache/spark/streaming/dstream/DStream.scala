@@ -989,6 +989,8 @@ object DStream {
   // `import StreamingContext._` to enable it. Now we move it here to make the compiler find
   // it automatically. However, we still keep the old function in StreamingContext for backward
   // compatibility and forward to the following function directly.
+  //不需要`import StreamingContext._` 的原因是：伴生对象为隐式转换的搜索
+  // 空间，可以直接找到。
 
   implicit def toPairDStreamFunctions[K, V](stream: DStream[(K, V)])
       (implicit kt: ClassTag[K], vt: ClassTag[V], ord: Ordering[K] = null):

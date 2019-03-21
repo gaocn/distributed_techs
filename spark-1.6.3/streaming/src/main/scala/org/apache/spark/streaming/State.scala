@@ -28,7 +28,7 @@ import org.apache.spark.annotation.Experimental
  * or a [[org.apache.spark.streaming.api.java.JavaPairDStream JavaPairDStream]] (Java).
  *
  * Scala example of using `State`:
- * {{{
+ * {{{ 类似对表的增删改查操作！
  *    // A mapping function that maintains an integer state and returns a String
  *    def mappingFunction(key: String, value: Option[Int], state: State[Int]): Option[String] = {
  *      // Check if state exists

@@ -25,6 +25,10 @@ import org.apache.spark.streaming.{Duration, Time}
 
 import scala.reflect.ClassTag
 
+/**
+  * StateDStream继承自DStream，所以虽然说是基于K-V的操作，所以一切还是
+  * DStream。
+  */
 private[streaming]
 class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
     parent: DStream[(K, V)],
@@ -33,7 +37,8 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
     preservePartitioning: Boolean,
     initialRDD : Option[RDD[(K, S)]]
   ) extends DStream[(K, S)](parent.ssc) {
-
+  //内存+序列化形式保存数据，因为要需要不断的进行update计算，数据可能非常多，
+  // 因此在每次进行updateStateByKey时都要讲数据持久化。（基于磁盘）
   super.persist(StorageLevel.MEMORY_ONLY_SER)
 
   override def dependencies: List[DStream[_]] = List(parent)
@@ -56,18 +61,21 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
       })
       updateFuncLocal(i)
     }
+    /**
+      * updateStateByKey操作的核心逻辑是基于cogroup进行的：按照key对所
+      * 有Value进行扫描然后聚合，每次计算时都需要这样扫描。
+      * 好处是：针对RDD进行cogroup操作简单
+      * 缺点是：性能低效，需要全局扫描，导致计算时间间隔越大计算速度越慢！！
+      */
     val cogroupedRDD = parentRDD.cogroup(prevStateRDD, partitioner)
     val stateRDD = cogroupedRDD.mapPartitions(finalFunc, preservePartitioning)
     Some(stateRDD)
   }
 
   override def compute(validTime: Time): Option[RDD[(K, S)]] = {
-
     // Try to get the previous state RDD
     getOrCompute(validTime - slideDuration) match {
-
       case Some(prevStateRDD) => {    // If previous state RDD exists
-
         // Try to get the parent RDD
         parent.getOrCompute(validTime) match {
           case Some(parentRDD) => {   // If parent RDD exists, then compute as usual
@@ -88,7 +96,6 @@ class StateDStream[K: ClassTag, V: ClassTag, S: ClassTag](
       }
 
       case None => {    // If previous session RDD does not exist (first input data)
-
         // Try to get the parent RDD
         parent.getOrCompute(validTime) match {
           case Some(parentRDD) => {   // If parent RDD exists, then compute as usual

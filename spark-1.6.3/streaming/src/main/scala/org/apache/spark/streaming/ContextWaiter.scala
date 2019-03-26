@@ -20,6 +20,9 @@ package org.apache.spark.streaming
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 
+/**
+  * 当下下载程序或上传程序时，或者实现自己的Server，可以参考！
+  */
 private[streaming] class ContextWaiter {
 
   private val lock = new ReentrantLock()

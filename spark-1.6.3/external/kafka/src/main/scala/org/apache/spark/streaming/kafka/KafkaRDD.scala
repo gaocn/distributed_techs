@@ -56,6 +56,7 @@ class KafkaRDD[
     messageHandler: MessageAndMetadata[K, V] => R
   ) extends RDD[R](sc, Nil) with Logging with HasOffsetRanges {
   override def getPartitions: Array[Partition] = {
+    //有多少OffsetRange就会产生多少个Partition
     offsetRanges.zipWithIndex.map { case (o, i) =>
         val (host, port) = leaders(TopicAndPartition(o.topic, o.partition))
         new KafkaRDDPartition(i, o.topic, o.partition, o.fromOffset, o.untilOffset, host, port)
@@ -132,10 +133,12 @@ class KafkaRDD[
         s"skipping ${part.topic} ${part.partition}")
       Iterator.empty
     } else {
+      //获取某一个Partition中的数据
       new KafkaRDDIterator(part, context)
     }
   }
 
+  //负责直连连接到Kafka，然后获取指定偏移量中的数据
   private class KafkaRDDIterator(
       part: KafkaRDDPartition,
       context: TaskContext) extends NextIterator[R] {
@@ -144,7 +147,7 @@ class KafkaRDD[
 
     log.info(s"Computing topic ${part.topic}, partition ${part.partition} " +
       s"offsets ${part.fromOffset} -> ${part.untilOffset}")
-
+    //KafkaCluster负责与Kafka直接进行交互获取数据或元数据信息....
     val kc = new KafkaCluster(kafkaParams)
     val keyDecoder = classTag[U].runtimeClass.getConstructor(classOf[VerifiableProperties])
       .newInstance(kc.config.props)

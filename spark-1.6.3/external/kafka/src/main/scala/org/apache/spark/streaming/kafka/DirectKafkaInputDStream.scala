@@ -63,6 +63,7 @@ class DirectKafkaInputDStream[
     val fromOffsets: Map[TopicAndPartition, Long],
     messageHandler: MessageAndMetadata[K, V] => R
   ) extends InputDStream[R](ssc_) with Logging {
+  //确保语义一致性
   val maxRetries = context.sparkContext.getConf.getInt(
     "spark.streaming.kafka.maxRetries", 1)
 
@@ -143,6 +144,7 @@ class DirectKafkaInputDStream[
 
   override def compute(validTime: Time): Option[KafkaRDD[K, V, U, T, R]] = {
     val untilOffsets = clamp(latestLeaderOffsets(maxRetries))
+    //每次Batch Duration时产生RDD实例，KafkaRDD实例与DirectKafkaUInputDStream是一一对应的
     val rdd = KafkaRDD[K, V, U, T, R](
       context.sparkContext, kafkaParams, currentOffsets, untilOffsets, messageHandler)
 

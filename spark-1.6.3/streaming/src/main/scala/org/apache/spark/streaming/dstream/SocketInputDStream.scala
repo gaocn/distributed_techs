@@ -100,6 +100,7 @@ private[streaming]
 object SocketReceiver  {
 
   /**
+   * 非常精妙的实现，从输入流量中获取一行一行的数据，并返回Iterator迭代器
    * This methods translates the data from an inputstream (say, from a socket)
    * to '\n' delimited strings and returns an iterator to access the strings.
    */

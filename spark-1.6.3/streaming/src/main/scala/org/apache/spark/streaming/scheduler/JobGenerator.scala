@@ -69,7 +69,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   }
 
   private val timer = new RecurringTimer(clock, ssc.graph.batchDuration.milliseconds,
-    longTime => eventLoop.post(GenerateJobs(new Time(longTime))), "JobGenerator")
+      longTime => eventLoop.post(GenerateJobs(new Time(longTime))), "JobGenerator")
 
   // This is marked lazy so that this is initialized after checkpoint duration has been set
   // in the context and the generator has been started.
@@ -210,7 +210,7 @@ class JobGenerator(jobScheduler: JobScheduler) extends Logging {
   /** Starts the generator for the first time */
   private def startFirstTime() {
     val startTime = new Time(timer.getStartTime())
-    //告诉DStreamGraph第一Batch启动的时间
+    //告诉DStreamGraph第一个Batch启动的时间
     graph.start(startTime - graph.batchDuration)
     //从作业生成角度讲，开启timer定时器以便随着时间间隔动态发出生成Job的事件
     timer.start(startTime.milliseconds)

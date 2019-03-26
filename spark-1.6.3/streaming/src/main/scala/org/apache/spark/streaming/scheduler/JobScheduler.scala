@@ -260,7 +260,7 @@ class JobScheduler(val ssc: StreamingContext) extends Logging {
           }
           _eventLoop = eventLoop
           if (_eventLoop != null) {
-            _eventLoop.post(JobCompleted(job, clock.getTimeMillis()))
+            d
           }
         } else {
           // JobScheduler has been stopped.

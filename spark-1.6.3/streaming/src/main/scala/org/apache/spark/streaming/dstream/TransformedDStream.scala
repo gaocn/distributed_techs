@@ -43,6 +43,21 @@ class TransformedDStream[U: ClassTag] (
       // Guard out against parent DStream that return None instead of Some(rdd) to avoid NPE
       throw new SparkException(s"Couldn't generate RDD from parent at time $validTime"))
     }
+    /**
+      * 调用compute时，transformFunc方法会被执行！！！
+      * 也就是时候当在transformFunc中有RDD的Action级别操作时，它会
+      * 绕过Spark Streaming直接在Spark Cluster中产生物理作业！！
+      *
+      * 这里产生的作业不受Spark Streaming统一调度而是由Spark Core直接调度
+      * 可以认为是Spark Streaming中的漏洞！
+      * 因为：transform一般是为使用RDD的内置的丰富transformation操作，返
+      * 回的是RDD，当在返回RDD之前是可以调用RDD的Action级别的操作启动物理作
+      * 业完成自己需要的功能的。
+      *
+      * 例如：可以用transform动态调优-> 数据倾斜问题，动态查看分区中的记录
+      * 数，针对数据倾斜可以采取一定措施。
+      *
+      */
     val transformedRDD = transformFunc(parentRDDs, validTime)
     if (transformedRDD == null) {
       throw new SparkException("Transform function must not return null. " +

@@ -42,7 +42,7 @@ final private[streaming] class DStreamGraph extends Serializable with Logging {
   private val inputStreams = new ArrayBuffer[InputDStream[_]]()
   //数据流向哪里：数据库、HBase、Redis等
   private val outputStreams = new ArrayBuffer[DStream[_]]()
-
+  //实际上结合窗口函数，该参数使用很少，会缓存数据在内存中，只有在一些高级功能中会用到
   var rememberDuration: Duration = null
   var checkpointInProgress = false
 

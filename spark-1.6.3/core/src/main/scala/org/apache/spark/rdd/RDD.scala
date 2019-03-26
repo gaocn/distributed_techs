@@ -1299,7 +1299,7 @@ abstract class RDD[T: ClassTag](
    * @note due to complications in the internal implementation, this method will raise
    * an exception if called on an RDD of `Nothing` or `Null`.
    */
-  def take(num: Int): Array[T] = withScope {
+  def  take(num: Int): Array[T] = withScope {
     if (num == 0) {
       new Array[T](0)
     } else {
@@ -1318,12 +1318,16 @@ abstract class RDD[T: ClassTag](
             numPartsToTry = partsScanned * 4
           } else {
             // the left side of max is >=1 whenever partsScanned >= 2
+            //每一次最多从4个分区中找需要的数据，做不够，则会在下一个Job中继续寻找
             numPartsToTry = Math.max((1.5 * num * partsScanned / buf.size).toInt - partsScanned, 1)
             numPartsToTry = Math.min(numPartsToTry, partsScanned * 4)
           }
         }
 
         val left = num - buf.size
+        //分区扫描，当从第一个分区获取到需要的所有数据，就没有必要再看其他的分区
+        //当没有数据时，第一个分区肯定不能满足需要，因此会另起一个Job继续循环找
+        // 其他的分区，这里就有一算法，如上while循环
         val p = partsScanned until math.min(partsScanned + numPartsToTry, totalParts)
         val res = sc.runJob(this, (it: Iterator[T]) => it.take(left).toArray, p)
 

@@ -58,7 +58,14 @@ class KafkaRDD[
   override def getPartitions: Array[Partition] = {
     //有多少OffsetRange就会产生多少个Partition
     offsetRanges.zipWithIndex.map { case (o, i) =>
-        val (host, port) = leaders(TopicAndPartition(o.topic, o.partition))
+      /**
+        * 这里可以改写：
+        * 从SparkConf中判断参数：把一个Kafka分区变成几个Spark Streaming
+        * 中RDD的几个Partition。默认情况下是：一对一。
+        * 当然，这里可以通过一个算法：根据CORE、内存资源情况最大化利用资源。
+        * 考虑情况：若分区数据量少则可以合并，若分区数据量大可以拆分。
+        */
+    val (host, port) = leaders(TopicAndPartition(o.topic, o.partition))
         new KafkaRDDPartition(i, o.topic, o.partition, o.fromOffset, o.untilOffset, host, port)
     }.toArray
   }

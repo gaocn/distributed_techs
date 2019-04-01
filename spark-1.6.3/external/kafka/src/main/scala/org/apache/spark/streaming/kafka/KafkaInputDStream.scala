@@ -73,6 +73,7 @@ class KafkaReceiver[
     kafkaParams: Map[String, String],
     topics: Map[String, Int],
     storageLevel: StorageLevel
+    //继承，通过子类封装变化
   ) extends Receiver[(K, V)](storageLevel) with Logging {
 
   // Connection to Kafka

@@ -58,6 +58,9 @@ object Partition {
 
 /**
  * Data structure that represents a topic partition. The leader maintains the AR, ISR, CUR, RAR
+ *
+ *
+ *
  */
 class Partition(val topicPartition: TopicPartition,
                 val isOffline: Boolean,

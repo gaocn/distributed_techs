@@ -66,6 +66,7 @@
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_STRING" value="-encoding UTF-8" />
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="spark-bagel_2.10" options="-Xlint:all,-serial,-path" />
       <module name="spark-catalyst_2.10" options="-Xlint:all,-serial,-path" />

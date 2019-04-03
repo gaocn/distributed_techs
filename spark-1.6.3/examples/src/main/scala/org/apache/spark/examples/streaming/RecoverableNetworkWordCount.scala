@@ -95,6 +95,9 @@ object DroppedWordsCounter {
  * the checkpoint data.
  *
  * Refer to the online documentation for more details.
+ * 该程序能够恢复的前提条件：
+ * 1、配置checkpoint目录；
+ * 2、
  */
 object RecoverableNetworkWordCount {
 
@@ -157,6 +160,11 @@ object RecoverableNetworkWordCount {
       System.exit(1)
     }
     val Array(ip, IntParam(port), checkpointDirectory, outputPath) = args
+    //考虑；当恢复时，程序发生变化(版本升级)，重启后就无法从checkpoint中读取
+    // 恢复内容，因为处理逻辑发生改变了。 此时需要手动从checkpoint中恢复数据：
+    // 1、手动设置checkpoint读取目录下的数据反序列化出DStreamGraph等，但
+    // DStreamGraph等已经发生了改变；2、DStreamGraph改变了需要手动构建；
+    // 3、元数据也发生了改变需要进行修改。
     val ssc = StreamingContext.getOrCreate(checkpointDirectory,
       () => {
         createContext(ip, port, outputPath, checkpointDirectory)

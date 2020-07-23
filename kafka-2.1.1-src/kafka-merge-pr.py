@@ -337,8 +337,8 @@ def standardize_jira_ref(text):
     'KAFKA-1094; Support MiMa for reporting binary compatibility across versions.'
     >>> standardize_jira_ref("[WIP] %s-1146; Vagrant support" % CAPITALIZED_PROJECT_NAME)
     'KAFKA-1146; [WIP] Vagrant support'
-    >>> standardize_jira_ref("%s-1032. If Yarn app fails before registering, app master stays aroun..." % PROJECT_NAME)
-    'KAFKA-1032; If Yarn app fails before registering, app master stays aroun...'
+    >>> standardize_jira_ref("%s-1032. If Yarn app fails before registering, app main stays aroun..." % PROJECT_NAME)
+    'KAFKA-1032; If Yarn app fails before registering, app main stays aroun...'
     >>> standardize_jira_ref("%s-6250 %s-6146 %s-5911: Types are now reserved words in DDL parser." % (PROJECT_NAME, PROJECT_NAME, CAPITALIZED_PROJECT_NAME))
     'KAFKA-6250 KAFKA-6146 KAFKA-5911; Types are now reserved words in DDL parser.'
     >>> standardize_jira_ref("Additional information for users building from source code")
